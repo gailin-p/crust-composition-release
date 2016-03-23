@@ -7,3 +7,5 @@
 *.spl
 *.gz
 *.fig
+.*.swp
+out*
