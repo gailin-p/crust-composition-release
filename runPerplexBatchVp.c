@@ -3,7 +3,7 @@
  * COMPILATION: mpicc -std=c99 -o runPerplexBatch runPerplexBatch.c
  * USAGE: mpiexec -np N ./runPerplexBatchVp ignmajors.csv
  * DESCRIPTION:  
- *   Configures and runs PerpleX seismic velocity calculations on n processors
+ *   Configures and runs PerpleX seismic velocity calculations on N processors
  *   for each bulk composition in ignmajors.csv, along a specified 
  *   geothermal gradient.
  * NOTES: Uses system() function and unix-like command-line arguments. Will 
@@ -98,12 +98,13 @@ int main(int argc, char **argv){
  		 * This location may vary on your system - contact your sysadmin if
  		 * unsure								*/
 //		const char scratchdir[]="/scratch/";
-		const char scratchdir[]="./";	// Just use local directory for now
+		const char scratchdir[]="./";	// Local directory
 
-		/* Path to PerpleX executables:						*/
+		/* Path to PerpleX executables and data files:				*/
 		const char pathtobuild[]="build";
 		const char pathtovertex[]="vertex";
 		const char pathtowerami[]="werami";
+		const char pathtodatafiles[]"./*.dat"; // Local directory
 
 		/************************************************************************/
 
@@ -141,7 +142,7 @@ int main(int argc, char **argv){
 			system(cmd_string);
 
 			// Place required data files
-			sprintf(cmd_string,"cp ./*.dat %s", prefix);
+			sprintf(cmd_string,"cp %s %s", pathtodatafiles prefix);
 			system(cmd_string);
 
 
