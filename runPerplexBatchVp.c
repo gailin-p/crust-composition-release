@@ -6,7 +6,8 @@
  *   Configures and runs PerpleX seismic velocity calculations on n processors
  *   for each bulk composition in ignmajors.csv, along a specified 
  *   geothermal gradient.
- *
+ * NOTES: Uses system() function and unix-like command-line arguments. Will 
+ *   likely only run on Linux/Unix/BSD/Mac
  ******************************************************************************/
 
 
@@ -90,18 +91,21 @@ int main(int argc, char **argv){
 		char* cmd_string = malloc(1000*sizeof(char));
 		char* path_string = malloc(500*sizeof(char));
 
-		// Simulation parameters
-		/**********************************************************/
-
-
-		// Variables that control size and location of the simulation
-		/***********************************************************/	
-		// Location of scratch directory (ideally local scratch for each node)
-		// This location may vary on your system - contact your sysadmin if unsure
+		/************************************************************************
+ 		 * Simulation Parameters:
+ 		 *
+ 		 * Location of scratch directory (ideally local scratch for each node)
+ 		 * This location may vary on your system - contact your sysadmin if
+ 		 * unsure								*/
 //		const char scratchdir[]="/scratch/";
-		const char scratchdir[]="./"; // Just use local directory for now
+		const char scratchdir[]="./";	// Just use local directory for now
 
-		/***********************************************************/
+		/* Path to PerpleX executables:						*/
+		const char pathtobuild[]="build";
+		const char pathtovertex[]="vertex";
+		const char pathtowerami[]="werami";
+
+		/************************************************************************/
 
 
 
@@ -119,21 +123,18 @@ int main(int argc, char **argv){
 			if (ic[0]<0) break;
 
 
-			usleep(1000);
+//			//Override water
+//			ic[9]=2.0;
+//			//Override CO2
+//			ic[10]=0.1;
 
+			// Print current whole-rock composition
 			for (i=0; i<12; i++){
 				printf("%g\t", ic[i]);
 			}
 			printf("\n");
 
 			
-			
-//			//Set water
-//			ic[9]=0.1;
-//			//Set CO2
-//			ic[10]=0.1;
-
-
 			//Configure working directory
 			sprintf(prefix,"%sout%.0f_%i/", scratchdir, world_rank, ic[0]);
 			sprintf(cmd_string,"rm -rf %s; mkdir %s", prefix, prefix);
@@ -160,11 +161,11 @@ int main(int argc, char **argv){
 			fclose(fp);
 
 			// build PerpleX problem definition
-			sprintf(cmd_string,"cd %s; build < build.txt >/dev/null", prefix);
+			sprintf(cmd_string,"cd %s; %s < build.txt >/dev/null", prefix, pathtobuild);
 			system(cmd_string);
 
 			// Run PerpleX vertex calculations
-			sprintf(cmd_string,"cd %s; echo %.0f | vertex > /dev/null", prefix, ic[0]);
+			sprintf(cmd_string,"cd %s; echo %.0f | %s > /dev/null", prefix, ic[0], pathtovertex);
 			system(cmd_string);
 
 
@@ -175,7 +176,7 @@ int main(int argc, char **argv){
 			fclose(fp);
 
 			// Extract Perplex results with werami
-			sprintf(cmd_string,"cd %s; werami < werami.txt", prefix);
+			sprintf(cmd_string,"cd %s; %s < werami.txt", prefix, pathtowerami);
 			system(cmd_string);
 
 			
