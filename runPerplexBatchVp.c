@@ -3,13 +3,26 @@
  * COMPILATION: mpicc -std=c99 -o runPerplexBatch runPerplexBatch.c
  * USAGE: mpiexec -np N ./runPerplexBatchVp ignmajors.csv
  * DESCRIPTION:  
- *   Configures and runs PerpleX seismic velocity calculations on N processors
- *   for each bulk composition in ignmajors.csv, along a specified 
- *   geothermal gradient.
- * NOTES: Uses system() function and unix-like command-line arguments. Will 
- *   likely only run on Linux/Unix/BSD/Mac
- ******************************************************************************/
-
+ *   Configures and runs PerpleX (http://www.perplex.ethz.ch/) seismic velocity 
+ *   calculations on N processors for each bulk composition in ignmajors.csv, 
+ *   along a specified geothermal gradient.
+ * NOTES: 
+ * 	This program uses the system() function and unix-like command-line 
+ *   arguments. Consequently, it will likely only run as-is on Linux/Unix/BSD/Mac.
+ *
+ *   To use as-is, make sure the perplex executables build, vertex, and werami
+ *   are on your $PATH, and place the three required .dat files (hp02ver.dat,
+ *   perplex_option.dat, and solution_model.dat are in the current directory.
+ *   Else, you can specify explicit paths to these files in the "simulation
+ *   parameters section of the code below.
+ *
+ *   In order to run different types of perplex calculations (i.e., to 
+ *   calculate something other than seismic velocites for the compositions
+ *   in ignmajors.csv) you can edit the batch strings that are written to 
+ *   build.txt and werami.txt. For more infomation on how this works,
+ *   see http://www.perplex.ethz.ch/perplex_66_seismic_velocity.html
+ *   and http://www.perplex.ethz.ch/faq/scripting.txt
+******************************************************************************/
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -105,7 +118,6 @@ int main(int argc, char **argv){
 		const char pathtovertex[]="vertex";
 		const char pathtowerami[]="werami";
 		const char pathtodatafiles[]"./*.dat"; // Local directory
-
 		/************************************************************************/
 
 
