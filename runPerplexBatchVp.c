@@ -39,11 +39,13 @@
 #include <math.h>
 #include "arrays.h"
 
+#define ROOT 0 // location of root node
 
 int main(int argc, char **argv){
-	uint32_t datarows, datacolumns;
-	uint32_t i, j, k;
+	uint32_t datarows, datacolumns, resultrows, resultcolumns;
+	uint32_t i, j, k, r, c;
 	int world_size, world_rank, rc;
+	FILE *fp;
 
 
 	//Check input arguments
@@ -63,17 +65,20 @@ int main(int argc, char **argv){
 	MPI_Comm_rank(MPI_COMM_WORLD,&world_rank);
 
 
-	if (world_rank==0){
+	if (world_rank==ROOT){
 		// Declare variables used only on the root node
 		int buf[world_size-1], nextReady;
 		MPI_Request reqs[world_size-1];
 		MPI_Status stats[world_size-1];
+		double* results = malloc(100000 * sizeof(double));
 
+		// Open output file
+		fp=fopen("results.csv","w");	
 		// Print format of output
-//		printf("");
+		fprintf(fp,"index\tP(bar)\tT(K)\trho\tVp\tVp/Vs\n");
 
 		// Import 2-d source data array as a flat double array. Format:
-		// KV, SiO2, TiO2, Al2O3, FeO, MgO, CaO, Na2O, K2O, H2O, CO2, tc1Crust
+		// #, SiO2, TiO2, Al2O3, FeO, MgO, CaO, Na2O, K2O, H2O, CO2, tc1Crust
 		double** const data = csvparse(argv[1],',', &datarows, &datacolumns);
 
 		// Listen for task requests from the worker nodes
@@ -84,30 +89,71 @@ int main(int argc, char **argv){
 
 		// Once any worker asks for a new task, send next task to that worker and keep listening
 		for (i=0; i<datarows; i++){
-			MPI_Waitany(world_size-1, reqs, &nextReady, stats);
+			//	    count, MPI_Request, *index, MPI_Status
+			MPI_Waitany(world_size-1, reqs, &nextReady, stats); // Listen for task request
+			if (buf[nextReady] > 0){
+				// Get results from last calculation (if any)
+				//       *buf, count, datatype, source, tag, comm, *status
+				MPI_Recv(&resultrows, 2, MPI_INT, nextReady+1, 2, MPI_COMM_WORLD, &stats[nextReady]);
+				MPI_Recv(&resultcolumns, 2, MPI_INT, nextReady+1, 3, MPI_COMM_WORLD, &stats[nextReady]);
+				MPI_Recv(results, resultrows*resultcolumns, MPI_DOUBLE, nextReady+1, 4, MPI_COMM_WORLD, &stats[nextReady]);
+
+				// Print results to file
+				for (r=0;r<resultrows;r++){
+					fprintf(fp,"%i\t", buf[nextReady]);
+					for(c=0;c<resultcolumns;c++){
+						fprintf(fp, "%g\t", results[r+c*resultrows]);
+					}
+					fprintf(fp, "\n");
+				}
+				fflush(fp);
+			}
+
 			//       *buf, count, datatype, dest, tag, comm
-			MPI_Send(data[i], 12, MPI_DOUBLE, nextReady+1, 1, MPI_COMM_WORLD);
+			MPI_Send(data[i], 12, MPI_DOUBLE, nextReady+1, 1, MPI_COMM_WORLD); // Send next problem to work on
 			//        *buf, count, datatype, source, tag, comm, *request
-			MPI_Irecv(&buf[nextReady], 1, MPI_INT, nextReady+1, 0, MPI_COMM_WORLD, &reqs[nextReady]);
+			MPI_Irecv(&buf[nextReady], 1, MPI_INT, nextReady+1, 0, MPI_COMM_WORLD, &reqs[nextReady]); // Keep waiting
 		}
 
 		// Wait for all workers to complete, then send the stop signal
 		MPI_Waitall(world_size-1, reqs, stats);	
 		double stop[12] = {-1};
 		for (i=1; i<world_size; i++){
+			if (buf[i] > 0){
+				// Get results from last calculation (if any)
+				//       *buf, count, datatype, source, tag, comm, *status
+				MPI_Recv(&resultrows, 2, MPI_INT, nextReady+1, 2, MPI_COMM_WORLD, &stats[i]);
+				MPI_Recv(&resultcolumns, 2, MPI_INT, nextReady+1, 3, MPI_COMM_WORLD, &stats[i]);
+				MPI_Recv(results, resultrows*resultcolumns, MPI_DOUBLE, nextReady+1, 4, MPI_COMM_WORLD, &stats[i]);
+
+				// Print results to file
+				for (r=0;r<resultrows;r++){
+					fprintf(fp,"%i\t", buf[i]);
+					for(c=0;c<resultcolumns;c++){
+						fprintf(fp, "%g\t", results[r+c*resultrows]);
+					}
+					fprintf(fp, "\n");
+				}
+				fflush(fp);
+			}
+
+			// Send top signal
 			MPI_Send(&stop, 12, MPI_DOUBLE, i, 1, MPI_COMM_WORLD);	
 		}
+
+		fclose(fp);
 	}
 
 	else {
 		// Declare variables used only on the worker nodes
 		MPI_Request sReq;
 		MPI_Status sStat;
-		double ic[12], **results;
-		FILE *fp;
+		double ic[12], *results;
 		char* prefix = malloc(500*sizeof(char));
 		char* cmd_string = malloc(1000*sizeof(char));
 		char* path_string = malloc(500*sizeof(char));
+		// Initialize index with negative value tell root node we don't have results yet
+		int index = -1.0; 
 
 		/************************************************************************
  		 * Simulation Parameters:
@@ -126,20 +172,20 @@ int main(int argc, char **argv){
 		/************************************************************************/
 
 
-
 		double dpdz = 2900. * 9.8 / 1E5 * 1E3; // Pressure gradient (bar/km)
 
+		// Ask root node for first task
+		//       *buf, count, datatype, dest, tag, comm, *request
+		MPI_Isend(&index, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &sReq);
+		//       *buf, count, datatype, source, tag, comm, *status
+		MPI_Recv(&ic, 12, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD, &sStat);
 
 		while (1) {
-			// Ask root node for new task
-			//       *buf, count, datatype, dest, tag, comm, *request
-			MPI_Isend(&world_rank, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &sReq);
-			//       *buf, count, datatype, source, tag, comm, *status
-			MPI_Recv(&ic, 12, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD, &sStat);
-
 			// Exit loop if stop signal recieved
 			if (ic[0]<0) break;
 
+			// Get calculation index from ic (round by casting to int)
+			index = (int) ic[0] + 0.5;
 
 //			//Override water
 //			ic[9]=2.0;
@@ -211,29 +257,31 @@ int main(int argc, char **argv){
 			sprintf(cmd_string, "cd %s; sed -e '1,/T(K)/d' -e 's/      /,/g' -e 's/,,*/,/g' %.0f_1.tab > %.0f.csv", prefix, ic[0], ic[0]);
 			system(cmd_string);
 
-//			// Import results, if they exist. Format:
-//			// P(bar) T(K) rho Vp(km/s) Vp/Vs
+			// Import results, if they exist. Format:
+			// P(bar) T(K) rho Vp(km/s) Vp/Vs
 			sprintf(path_string, "%s%.0f.csv", prefix, ic[0]);
-			results = csvparse(path_string,',', &datarows, &datacolumns);	
-
-			for (i=0;i<datarows;i++){
-				for(j=0;j<datacolumns;j++){
-					printf("%g\t", results[i][j]);
-				}
-				printf("\n");
-			}
-
-			freeDoubleArray(results,datarows);
-
-				
-//
+			results = csvparseflat(path_string,',', &resultrows, &resultcolumns);	
+	
 //			// Can delete temp files after we've read them
 //			sprintf(cmd_string,"rm -r %s", prefix);
 //			system(cmd_string);
-//
-//			// Print results. Format:
-//			// Kv, P, T, Rho, Vp, Vp/Vs
-//			printf("");
+
+
+
+			// Tell root node we're done
+			//       *buf, count, datatype, dest, tag, comm, *request
+			MPI_Isend(&index, 1, MPI_INT, ROOT, 0, MPI_COMM_WORLD, &sReq);
+			
+			// Send results of last task back to root node and free result array
+			//       *buf, count, datatype, dest, tag, comm
+			MPI_Send(&resultrows, 1, MPI_INT, ROOT, 2, MPI_COMM_WORLD);
+			MPI_Send(&resultcolumns, 1, MPI_INT, ROOT, 3, MPI_COMM_WORLD);
+			MPI_Send(results, resultrows*resultcolumns, MPI_DOUBLE, ROOT, 4, MPI_COMM_WORLD);
+			free(results);
+
+			// Get next task from root node
+			//       *buf, count, datatype, source, tag, comm, *status
+			MPI_Recv(&ic, 12, MPI_DOUBLE, ROOT, 1, MPI_COMM_WORLD, &sStat);
 
 		}
 	}
