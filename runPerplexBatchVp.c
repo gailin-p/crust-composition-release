@@ -103,7 +103,7 @@ int main(int argc, char **argv){
 		// Declare variables used only on the worker nodes
 		MPI_Request sReq;
 		MPI_Status sStat;
-		double ic[12];
+		double ic[12], **results;
 		FILE *fp;
 		char* prefix = malloc(500*sizeof(char));
 		char* cmd_string = malloc(1000*sizeof(char));
@@ -122,7 +122,7 @@ int main(int argc, char **argv){
 		const char pathtobuild[]="build";
 		const char pathtovertex[]="vertex";
 		const char pathtowerami[]="werami";
-		const char pathtodatafiles[]"./*.dat"; // Local directory
+		const char pathtodatafiles[]="./*.dat"; // Local directory
 		/************************************************************************/
 
 
@@ -159,7 +159,7 @@ int main(int argc, char **argv){
 			system(cmd_string);
 
 			// Place required data files
-			sprintf(cmd_string,"cp %s %s", pathtodatafiles prefix);
+			sprintf(cmd_string,"cp %s %s", pathtodatafiles, prefix);
 			system(cmd_string);
 
 
@@ -179,7 +179,7 @@ int main(int argc, char **argv){
 			fclose(fp);
 
 			// build PerpleX problem definition
-			sprintf(cmd_string,"cd %s; %s < build.txt >/dev/null", prefix, pathtobuild);
+			sprintf(cmd_string,"cd %s; %s < build.txt > /dev/null", prefix, pathtobuild);
 			system(cmd_string);
 
 			// Run PerpleX vertex calculations
@@ -194,7 +194,7 @@ int main(int argc, char **argv){
 			fclose(fp);
 
 			// Extract Perplex results with werami
-			sprintf(cmd_string,"cd %s; %s < werami.txt", prefix, pathtowerami);
+			sprintf(cmd_string,"cd %s; %s < werami.txt > /dev/null", prefix, pathtowerami);
 			system(cmd_string);
 
 			
@@ -206,9 +206,26 @@ int main(int argc, char **argv){
 				system(cmd_string);
 				continue;
 			}
+			
+			// Use sed to convert the .tab output file into a plain csv
+			sprintf(cmd_string, "cd %s; sed -e '1,/T(K)/d' -e 's/      /,/g' -e 's/,,*/,/g' %.0f_1.tab > %.0f.csv", prefix, ic[0], ic[0]);
+			system(cmd_string);
 
 //			// Import results, if they exist. Format:
 //			// P(bar) T(K) rho Vp(km/s) Vp/Vs
+			sprintf(path_string, "%s%.0f.csv", prefix, ic[0]);
+			results = csvparse(path_string,',', &datarows, &datacolumns);	
+
+			for (i=0;i<datarows;i++){
+				for(j=0;j<datacolumns;j++){
+					printf("%g\t", results[i][j]);
+				}
+				printf("\n");
+			}
+
+			freeDoubleArray(results,datarows);
+
+				
 //
 //			// Can delete temp files after we've read them
 //			sprintf(cmd_string,"rm -r %s", prefix);
