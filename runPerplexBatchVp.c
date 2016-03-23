@@ -1,9 +1,12 @@
 /******************************************************************************
- * FILE: meltsTzircFullParallel.c
+ * FILE: runPerplexBatchVp.c
+ * COMPILATION: mpicc -std=c99 -o runPerplexBatch runPerplexBatch.c
+ * USAGE: mpiexec -np N ./runPerplexBatchVp ignmajors.csv
  * DESCRIPTION:  
- *   As meltsTzircParallel.c, but prints output differently, returning one line
- * for each cooling step of each magma.
- * AUTHOR: C. Brenhin Keller
+ *   Configures and runs PerpleX seismic velocity calculations on n processors
+ *   for each bulk composition in ignmajors.csv, along a specified 
+ *   geothermal gradient.
+ *
  ******************************************************************************/
 
 
@@ -16,7 +19,6 @@
 #include <string.h>
 #include <math.h>
 #include "arrays.h"
-
 
 
 int main(int argc, char **argv){
@@ -52,7 +54,7 @@ int main(int argc, char **argv){
 //		printf("");
 
 		// Import 2-d source data array as a flat double array. Format:
-		// SiO2, TiO2, Al2O3, FeO, MgO, CaO, Na2O, K2O, H2O, CO2, Kv, tc1Crust
+		// KV, SiO2, TiO2, Al2O3, FeO, MgO, CaO, Na2O, K2O, H2O, CO2, tc1Crust
 		double** const data = csvparse(argv[1],',', &datarows, &datacolumns);
 
 		// Listen for task requests from the worker nodes
@@ -96,19 +98,12 @@ int main(int argc, char **argv){
 		/***********************************************************/	
 		// Location of scratch directory (ideally local scratch for each node)
 		// This location may vary on your system - contact your sysadmin if unsure
-//		const char scratchdir[]="/scratch/gpfs/cbkeller/";
 //		const char scratchdir[]="/scratch/";
-		const char scratchdir[]="./";
+		const char scratchdir[]="./"; // Just use local directory for now
 
-		// Variables that determine how much memory to allocate to imported results
 		/***********************************************************/
 
 
-		// Malloc space for the imported melts array
-
-
-
-		//  Variables for finding saturation temperature
 
 		double dpdz = 2900. * 9.8 / 1E5 * 1E3; // Pressure gradient (bar/km)
 
@@ -134,16 +129,15 @@ int main(int argc, char **argv){
 			
 			
 //			//Set water
-//			ic[15]=0.1;
+//			ic[9]=0.1;
 //			//Set CO2
-//			ic[14]=0.1;
+//			ic[10]=0.1;
 
 
 			//Configure working directory
 			sprintf(prefix,"%sout%.0f_%i/", scratchdir, world_rank, ic[0]);
 			sprintf(cmd_string,"rm -rf %s; mkdir %s", prefix, prefix);
 			system(cmd_string);
-
 
 			// Place required data files
 			sprintf(cmd_string,"cp ./*.dat %s", prefix);
@@ -165,12 +159,6 @@ int main(int argc, char **argv){
 			fprintf(fp,"\nn\nn\ny\nsolution_model.dat\nmelt(HP)\nO(HP)\nOpx(HP)\nOmph(GHP)\nGt(HP)\noAmph(DP)\ncAmph(DP)\nT\nB\nAnth\nChum\nChl(HP)\nBio(TCC)\nMica(CF)\nCtd(HP)\nIlHm(A)\nSp(HP)\nSapp(HP)\nSt(HP)\nfeldspar\nNeph(FB)\nScap\nDo(HP)\nF\n\nClosed System");	
 			fclose(fp);
 
-			// Create werami batch file
-			sprintf(path_string, "%swerami.txt", prefix);
-			fp=fopen(path_string,"w");
-			fprintf(fp,"%.0f\n3\n1\n25000\n100\n2\nn\nn\n13\nn\nn\n15\nn\nn\n0\n0\n", ic[0]);
-			fclose(fp);
-
 			// build PerpleX problem definition
 			sprintf(cmd_string,"cd %s; build < build.txt >/dev/null", prefix);
 			system(cmd_string);
@@ -179,32 +167,36 @@ int main(int argc, char **argv){
 			sprintf(cmd_string,"cd %s; echo %.0f | vertex > /dev/null", prefix, ic[0]);
 			system(cmd_string);
 
+
+			// Create werami batch file
+			sprintf(path_string, "%swerami.txt", prefix);
+			fp=fopen(path_string,"w");
+			fprintf(fp,"%.0f\n3\n1\n1\n25000\n100\n2\nn\nn\n13\nn\nn\n15\nn\nn\n0\n0\n", ic[0]);
+			fclose(fp);
+
 			// Extract Perplex results with werami
 			sprintf(cmd_string,"cd %s; werami < werami.txt", prefix);
 			system(cmd_string);
 
 			
-//			// If simulation failed, clean up scratch directory and move on to next simulation
-////			sprintf(cmd_string,"%sPhase_main_tbl.txt", prefix);
-////			if ((fp = fopen(cmd_string, "r")) == NULL) {
-////				fprintf(stderr, "%s : MELTS equilibration failed to produce output.\n", prefix);
-////				sprintf(cmd_string,"rm -r %s", prefix);
-////				system(cmd_string);
-////				continue;
-////			}
-//
+			// If results can't be found, clean up scratch directory and move on to next simulation
+			sprintf(cmd_string,"%s%.0f_1.tab", prefix, ic[0]);
+			if ((fp = fopen(cmd_string, "r")) == NULL) {
+				fprintf(stderr, "%s : Simulation output could not be found.\n", prefix);
+				sprintf(cmd_string,"rm -r %s", prefix);
+				system(cmd_string);
+				continue;
+			}
+
 //			// Import results, if they exist. Format:
-//			// Pressure Temperature mass S H V Cp viscosity SiO2 TiO2 Al2O3 Fe2O3 Cr2O3 FeO MnO MgO NiO CoO CaO Na2O K2O P2O5 H2O
-//
+//			// P(bar) T(K) rho Vp(km/s) Vp/Vs
 //
 //			// Can delete temp files after we've read them
 //			sprintf(cmd_string,"rm -r %s", prefix);
 //			system(cmd_string);
 //
-//
-//
 //			// Print results. Format:
-//			// Kv, T, F, M, SiO2, Zr, Zrsat, MZr, TSat
+//			// Kv, P, T, Rho, Vp, Vp/Vs
 //			printf("");
 
 		}
