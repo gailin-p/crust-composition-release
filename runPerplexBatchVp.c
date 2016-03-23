@@ -2,10 +2,15 @@
  * FILE: runPerplexBatchVp.c
  * COMPILATION: mpicc -std=c99 -o runPerplexBatch runPerplexBatch.c
  * USAGE: mpiexec -np N ./runPerplexBatchVp ignmajors.csv
+ *
  * DESCRIPTION:  
- *   Configures and runs PerpleX (http://www.perplex.ethz.ch/) seismic velocity 
- *   calculations on N processors for each bulk composition in ignmajors.csv, 
- *   along a specified geothermal gradient.
+ *   Configures and runs PerpleX  seismic velocity calculations on N 
+ *   processors for each bulk composition in ignmajors.csv, along a specified 
+ *   geothermal gradient.
+ *
+ * PREREQUISITES:
+ *   PerpleX (http://www.perplex.ethz.ch/)
+ *
  * NOTES: 
  * 	This program uses the system() function and unix-like command-line 
  *   arguments. Consequently, it will likely only run as-is on Linux/Unix/BSD/Mac.
