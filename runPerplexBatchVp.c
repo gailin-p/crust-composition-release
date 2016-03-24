@@ -71,6 +71,7 @@ int main(int argc, char **argv){
 		MPI_Request reqs[world_size-1];
 		MPI_Status stats[world_size-1];
 		double* results = malloc(100000 * sizeof(double));
+		double stop[12] = {-1};
 
 		// Open output file
 		fp=fopen("results.csv","w");	
@@ -103,31 +104,35 @@ int main(int argc, char **argv){
 				fflush(fp);
 			}
 
-			//       *buf, count, datatype, dest, tag, comm
+			//       *buf, count, datatype, dest, tag, comm	
+			printf("0: Send data: Rank: %i\n", nextReady+1);
 			MPI_Send(data[i], 12, MPI_DOUBLE, nextReady+1, 1, MPI_COMM_WORLD); // Send next problem to work on
 			//        *buf, count, datatype, source, tag, comm, *request
 			MPI_Irecv(&buf[nextReady], 1, MPI_INT, nextReady+1, 0, MPI_COMM_WORLD, &reqs[nextReady]); // Keep waiting
 		}
 
-		// Wait for all workers to complete, then send the stop signal
-		MPI_Waitall(world_size-1, reqs, stats);	
-		double stop[12] = {-1};
+		// Once all tasks have been sent, wait for workers to complete and send the stop signal
 		for (i=1; i<world_size; i++){
-			if (buf[i] > 0){
-				// Get results from last calculation (if any)
+			// Listen for task request
+			//	    count, MPI_Request, *index, MPI_Status
+			MPI_Waitany(world_size-1, reqs, &nextReady, stats); 
+			// Get results from last calculation (if any)
+			if (buf[nextReady] > 0){
 				//       *buf, count, datatype, source, tag, comm, *status
-				MPI_Recv(&resultrows, 2, MPI_INT, nextReady+1, 2, MPI_COMM_WORLD, &stats[i]);
-				MPI_Recv(&resultcolumns, 2, MPI_INT, nextReady+1, 3, MPI_COMM_WORLD, &stats[i]);
-				MPI_Recv(results, resultrows*resultcolumns, MPI_DOUBLE, nextReady+1, 4, MPI_COMM_WORLD, &stats[i]);
+				MPI_Recv(&resultrows, 2, MPI_INT, nextReady+1, 2, MPI_COMM_WORLD, &stats[nextReady]);
+				MPI_Recv(&resultcolumns, 2, MPI_INT, nextReady+1, 3, MPI_COMM_WORLD, &stats[nextReady]);
+				MPI_Recv(results, resultrows*resultcolumns, MPI_DOUBLE, nextReady+1, 4, MPI_COMM_WORLD, &stats[nextReady]);
 
 				// Print results to file
-				fprintfflatindex(fp, results, buf[i], '\t', resultrows, resultcolumns);
+				fprintfflatindex(fp, results, buf[nextReady], '\t', resultrows, resultcolumns);
 				fflush(fp);
 			}
 
 			// Send stop signal
-			MPI_Send(&stop, 12, MPI_DOUBLE, i, 1, MPI_COMM_WORLD);	
+			printf("0: Stop: Rank: %i\n", nextReady+1);
+			MPI_Send(&stop, 12, MPI_DOUBLE, nextReady+1, 1, MPI_COMM_WORLD);	
 		}
+
 
 		fclose(fp);
 	}
@@ -162,18 +167,45 @@ int main(int argc, char **argv){
 
 		double dpdz = 2900. * 9.8 / 1E5 * 1E3; // Pressure gradient (bar/km)
 
-		// Ask root node for first task
-		//       *buf, count, datatype, dest, tag, comm, *request
-		MPI_Isend(&index, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &sReq);
-		//       *buf, count, datatype, source, tag, comm, *status
-		MPI_Recv(&ic, 12, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD, &sStat);
 
 		while (1) {
-			// Exit loop if stop signal recieved
-			if (ic[0]<0) break;
+			// Ask root node for task to work on
+			//       *buf, count, datatype, dest, tag, comm, *request
+			printf("%i: Asking root for new task\n", world_rank);
+			MPI_Isend(&index, 1, MPI_INT, ROOT, 0, MPI_COMM_WORLD, &sReq);
+			
+			// Send results of last task (if any) back to root node and free result array
+			if (index>0){
+				printf("%i: Sending results back to root\n", world_rank);
+				//       *buf, count, datatype, dest, tag, command
+				MPI_Send(&resultrows, 1, MPI_INT, ROOT, 2, MPI_COMM_WORLD);
+				MPI_Send(&resultcolumns, 1, MPI_INT, ROOT, 3, MPI_COMM_WORLD);
+				MPI_Send(results, resultrows*resultcolumns, MPI_DOUBLE, ROOT, 4, MPI_COMM_WORLD);
+				printf("%i: Results sent to root\n", world_rank);
+				free(results);
+			}
+
+			// Get next task from root node
+			//       *buf, count, datatype, source, tag, comm, *status
+			MPI_Recv(&ic, 12, MPI_DOUBLE, ROOT, 1, MPI_COMM_WORLD, &sStat);
+
+			// If composition is unreadable, move on to next simulation
+			if (isnan(ic[0])){
+				fprintf(stderr, "%i: Sumulation input contains NaN, moving on.\n", world_rank);
+				index = -1;
+				continue;
+			}
 
 			// Get calculation index from ic (round by casting to int)
-			index = (int) ic[0] + 0.5;
+			index = (int) round(ic[0]);
+
+			printf("%i: index: %i\n",world_rank,index);
+
+			// Exit loop if stop signal recieved
+			if (index == -1) {
+				printf("%i: breaking!\n", world_rank);
+				break;
+			}
 
 //			//Override water
 //			ic[9]=2.0;
@@ -235,9 +267,10 @@ int main(int argc, char **argv){
 			// If results can't be found, clean up scratch directory and move on to next simulation
 			sprintf(cmd_string,"%s%i_1.tab", prefix, index);
 			if ((fp = fopen(cmd_string, "r")) == NULL) {
-				fprintf(stderr, "%s : Simulation output could not be found.\n", prefix);
+				fprintf(stderr, "%i: %s : Simulation output could not be found.\n", world_rank, prefix);
 				sprintf(cmd_string,"rm -r %s", prefix);
 				system(cmd_string);
+				index = -1;
 				continue;
 			}
 			
@@ -253,22 +286,6 @@ int main(int argc, char **argv){
 //			// Can delete temp files after we've read them
 //			sprintf(cmd_string,"rm -r %s", prefix);
 //			system(cmd_string);
-
-
-			// Tell root node we're done
-			//       *buf, count, datatype, dest, tag, comm, *request
-			MPI_Isend(&index, 1, MPI_INT, ROOT, 0, MPI_COMM_WORLD, &sReq);
-			
-			// Send results of last task back to root node and free result array
-			//       *buf, count, datatype, dest, tag, comm
-			MPI_Send(&resultrows, 1, MPI_INT, ROOT, 2, MPI_COMM_WORLD);
-			MPI_Send(&resultcolumns, 1, MPI_INT, ROOT, 3, MPI_COMM_WORLD);
-			MPI_Send(results, resultrows*resultcolumns, MPI_DOUBLE, ROOT, 4, MPI_COMM_WORLD);
-			free(results);
-
-			// Get next task from root node
-			//       *buf, count, datatype, source, tag, comm, *status
-			MPI_Recv(&ic, 12, MPI_DOUBLE, ROOT, 1, MPI_COMM_WORLD, &sStat);
 
 		}
 	}
