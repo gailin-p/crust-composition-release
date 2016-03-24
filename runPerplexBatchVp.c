@@ -105,7 +105,7 @@ int main(int argc, char **argv){
 			}
 
 			//       *buf, count, datatype, dest, tag, comm	
-			printf("0: Send data: Rank: %i\n", nextReady+1);
+//			printf("0: Send data: Rank: %i\n", nextReady+1);
 			MPI_Send(data[i], 12, MPI_DOUBLE, nextReady+1, 1, MPI_COMM_WORLD); // Send next problem to work on
 			//        *buf, count, datatype, source, tag, comm, *request
 			MPI_Irecv(&buf[nextReady], 1, MPI_INT, nextReady+1, 0, MPI_COMM_WORLD, &reqs[nextReady]); // Keep waiting
@@ -129,7 +129,7 @@ int main(int argc, char **argv){
 			}
 
 			// Send stop signal
-			printf("0: Stop: Rank: %i\n", nextReady+1);
+//			printf("0: Stop: Rank: %i\n", nextReady+1);
 			MPI_Send(&stop, 12, MPI_DOUBLE, nextReady+1, 1, MPI_COMM_WORLD);	
 		}
 
@@ -154,14 +154,15 @@ int main(int argc, char **argv){
  		 * Location of scratch directory (ideally local scratch for each node)
  		 * This location may vary on your system - contact your sysadmin if
  		 * unsure								*/
-//		const char scratchdir[]="/scratch/";
 		const char scratchdir[]="./";	// Local directory
+//		const char scratchdir[]="/scratch/cbkeller/";
 
 		/* Path to PerpleX executables and data files:				*/
 		const char pathtobuild[]="build";
 		const char pathtovertex[]="vertex";
 		const char pathtowerami[]="werami";
 		const char pathtodatafiles[]="./*.dat"; // Local directory
+//		const char pathtodatafiles[]="/scratch/gpfs/cbkeller/*.dat";
 		/************************************************************************/
 
 
@@ -171,17 +172,17 @@ int main(int argc, char **argv){
 		while (1) {
 			// Ask root node for task to work on
 			//       *buf, count, datatype, dest, tag, comm, *request
-			printf("%i: Asking root for new task\n", world_rank);
+//			printf("%i: Asking root for new task\n", world_rank);
 			MPI_Isend(&index, 1, MPI_INT, ROOT, 0, MPI_COMM_WORLD, &sReq);
 			
 			// Send results of last task (if any) back to root node and free result array
 			if (index>0){
-				printf("%i: Sending results back to root\n", world_rank);
+//				printf("%i: Sending results back to root\n", world_rank);
 				//       *buf, count, datatype, dest, tag, command
 				MPI_Send(&resultrows, 1, MPI_INT, ROOT, 2, MPI_COMM_WORLD);
 				MPI_Send(&resultcolumns, 1, MPI_INT, ROOT, 3, MPI_COMM_WORLD);
 				MPI_Send(results, resultrows*resultcolumns, MPI_DOUBLE, ROOT, 4, MPI_COMM_WORLD);
-				printf("%i: Results sent to root\n", world_rank);
+//				printf("%i: Results sent to root\n", world_rank);
 				free(results);
 			}
 
@@ -199,11 +200,11 @@ int main(int argc, char **argv){
 			// Get calculation index from ic (round by casting to int)
 			index = (int) round(ic[0]);
 
-			printf("%i: index: %i\n",world_rank,index);
+//			printf("%i: index: %i\n",world_rank,index);
 
 			// Exit loop if stop signal recieved
 			if (index == -1) {
-				printf("%i: breaking!\n", world_rank);
+//				printf("%i: done!\n", world_rank);
 				break;
 			}
 
@@ -212,11 +213,11 @@ int main(int argc, char **argv){
 //			//Override CO2
 //			ic[10]=0.1;
 
-			// Print current whole-rock composition
-			for (i=0; i<12; i++){
-				printf("%g\t", ic[i]);
-			}
-			printf("\n");
+//			// Print current whole-rock composition
+//			for (i=0; i<12; i++){
+//				printf("%g\t", ic[i]);
+//			}
+//			printf("\n");
 
 			
 			//Configure working directory
@@ -283,9 +284,9 @@ int main(int argc, char **argv){
 			sprintf(path_string, "%s%i.csv", prefix, index);
 			results = csvparseflat(path_string,',', &resultrows, &resultcolumns);	
 	
-//			// Can delete temp files after we've read them
-//			sprintf(cmd_string,"rm -r %s", prefix);
-//			system(cmd_string);
+			// Can delete temp files after we've read them
+			sprintf(cmd_string,"rm -r %s", prefix);
+			system(cmd_string);
 
 		}
 	}
