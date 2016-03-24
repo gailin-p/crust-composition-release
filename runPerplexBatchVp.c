@@ -222,7 +222,7 @@ int main(int argc, char **argv){
 			
 			//Configure working directory
 			sprintf(prefix,"%sout%i_%i/", scratchdir, world_rank, index);
-			sprintf(cmd_string,"rm -rf %s; mkdir %s", prefix, prefix);
+			sprintf(cmd_string,"rm -rf %s; mkdir -p %s", prefix, prefix);
 			system(cmd_string);
 
 			// Place required data files
