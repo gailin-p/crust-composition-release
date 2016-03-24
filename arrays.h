@@ -340,6 +340,33 @@ double *csvparseflat(const char filePath[], const char delim, uint32_t * const r
 
 }
 
+uint32_t fprintfflat(FILE* fp, const double* data, const char delim, uint32_t rows, uint32_t  columns){
+	//Print the array
+	for (uint32_t i=0;i<rows;i++){
+		for (uint32_t j=0;j<columns;j++){
+			fprintf(fp, "%g%c", data[j*rows + i], delim);
+		}
+		// Delete the trailing delimiter and print a newline at the end of the row
+		fseek(fp,-1,SEEK_CUR);
+		fprintf(fp,"\n");
+	}
+	return 0;
+}
+
+uint32_t fprintfflatindex(FILE* fp, const double* data, const int index, const char delim, uint32_t rows, uint32_t  columns){
+	//Print the array
+	for (uint32_t i=0;i<rows;i++){
+		fprintf(fp, "%i%c", index, delim);
+		for (uint32_t j=0;j<columns;j++){
+			fprintf(fp, "%g%c", data[j*rows + i], delim);
+		}
+		// Delete the trailing delimiter and print a newline at the end of the row
+		fseek(fp,-1,SEEK_CUR);
+		fprintf(fp,"\n");
+	}
+	return 0;
+}
+
 uint32_t csvwriteflat(const double* data, const char filePath[], const char* mode,  const char delim, uint32_t rows, uint32_t  columns){
 	// File to open
 	FILE *fp;

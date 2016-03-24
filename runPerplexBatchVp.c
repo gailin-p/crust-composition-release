@@ -39,7 +39,7 @@
 #include <math.h>
 #include "arrays.h"
 
-#define ROOT 0 // location of root node
+#define ROOT 0 // Set identiy of root node
 
 int main(int argc, char **argv){
 	uint32_t datarows, datacolumns, resultrows, resultcolumns;
@@ -99,13 +99,7 @@ int main(int argc, char **argv){
 				MPI_Recv(results, resultrows*resultcolumns, MPI_DOUBLE, nextReady+1, 4, MPI_COMM_WORLD, &stats[nextReady]);
 
 				// Print results to file
-				for (r=0;r<resultrows;r++){
-					fprintf(fp,"%i\t", buf[nextReady]);
-					for(c=0;c<resultcolumns;c++){
-						fprintf(fp, "%g\t", results[r+c*resultrows]);
-					}
-					fprintf(fp, "\n");
-				}
+				fprintfflatindex(fp, results, buf[nextReady], '\t', resultrows, resultcolumns);
 				fflush(fp);
 			}
 
@@ -127,17 +121,11 @@ int main(int argc, char **argv){
 				MPI_Recv(results, resultrows*resultcolumns, MPI_DOUBLE, nextReady+1, 4, MPI_COMM_WORLD, &stats[i]);
 
 				// Print results to file
-				for (r=0;r<resultrows;r++){
-					fprintf(fp,"%i\t", buf[i]);
-					for(c=0;c<resultcolumns;c++){
-						fprintf(fp, "%g\t", results[r+c*resultrows]);
-					}
-					fprintf(fp, "\n");
-				}
+				fprintfflatindex(fp, results, buf[i], '\t', resultrows, resultcolumns);
 				fflush(fp);
 			}
 
-			// Send top signal
+			// Send stop signal
 			MPI_Send(&stop, 12, MPI_DOUBLE, i, 1, MPI_COMM_WORLD);	
 		}
 
@@ -200,7 +188,7 @@ int main(int argc, char **argv){
 
 			
 			//Configure working directory
-			sprintf(prefix,"%sout%.0f_%i/", scratchdir, world_rank, ic[0]);
+			sprintf(prefix,"%sout%i_%i/", scratchdir, world_rank, index);
 			sprintf(cmd_string,"rm -rf %s; mkdir %s", prefix, prefix);
 			system(cmd_string);
 
@@ -213,7 +201,7 @@ int main(int argc, char **argv){
 			sprintf(path_string, "%sbuild.txt", prefix);
 			fp=fopen(path_string,"w");
 			// Name, components, and basic options. Holland and Powell (2002) thermodynamic dataset and (1998) fluid equation state.
-			fprintf(fp,"%.0f\nhp02ver.dat\nperplex_option.dat\nn\nn\nn\nn\nSIO2\nTIO2\nAL2O3\nFEO\nMGO\nCAO\nNA2O\nK2O\nH2O\nCO2\n\n5\n", ic[0]);
+			fprintf(fp,"%i\nhp02ver.dat\nperplex_option.dat\nn\nn\nn\nn\nSIO2\nTIO2\nAL2O3\nFEO\nMGO\nCAO\nNA2O\nK2O\nH2O\nCO2\n\n5\n", index);
 			// Pressure gradient details
 			fprintf(fp,"3\nn\ny\n2\n1\n273.15\n%g\n1\n25000\ny\n", 550.0/ic[11]/dpdz);
 			// Whole-rock composition
@@ -229,14 +217,14 @@ int main(int argc, char **argv){
 			system(cmd_string);
 
 			// Run PerpleX vertex calculations
-			sprintf(cmd_string,"cd %s; echo %.0f | %s > /dev/null", prefix, ic[0], pathtovertex);
+			sprintf(cmd_string,"cd %s; echo %i | %s > /dev/null", prefix, index, pathtovertex);
 			system(cmd_string);
 
 
 			// Create werami batch file
 			sprintf(path_string, "%swerami.txt", prefix);
 			fp=fopen(path_string,"w");
-			fprintf(fp,"%.0f\n3\n1\n1\n25000\n100\n2\nn\nn\n13\nn\nn\n15\nn\nn\n0\n0\n", ic[0]);
+			fprintf(fp,"%i\n3\n1\n1\n25000\n100\n2\nn\nn\n13\nn\nn\n15\nn\nn\n0\n0\n", index);
 			fclose(fp);
 
 			// Extract Perplex results with werami
@@ -245,7 +233,7 @@ int main(int argc, char **argv){
 
 			
 			// If results can't be found, clean up scratch directory and move on to next simulation
-			sprintf(cmd_string,"%s%.0f_1.tab", prefix, ic[0]);
+			sprintf(cmd_string,"%s%i_1.tab", prefix, index);
 			if ((fp = fopen(cmd_string, "r")) == NULL) {
 				fprintf(stderr, "%s : Simulation output could not be found.\n", prefix);
 				sprintf(cmd_string,"rm -r %s", prefix);
@@ -254,18 +242,17 @@ int main(int argc, char **argv){
 			}
 			
 			// Use sed to convert the .tab output file into a plain csv
-			sprintf(cmd_string, "cd %s; sed -e '1,/T(K)/d' -e 's/      /,/g' -e 's/,,*/,/g' %.0f_1.tab > %.0f.csv", prefix, ic[0], ic[0]);
+			sprintf(cmd_string, "cd %s; sed -e '1,/T(K)/d' -e 's/      /,/g' -e 's/,,*/,/g' %i_1.tab > %i.csv", prefix, index, index);
 			system(cmd_string);
 
 			// Import results, if they exist. Format:
 			// P(bar) T(K) rho Vp(km/s) Vp/Vs
-			sprintf(path_string, "%s%.0f.csv", prefix, ic[0]);
+			sprintf(path_string, "%s%i.csv", prefix, index);
 			results = csvparseflat(path_string,',', &resultrows, &resultcolumns);	
 	
 //			// Can delete temp files after we've read them
 //			sprintf(cmd_string,"rm -r %s", prefix);
 //			system(cmd_string);
-
 
 
 			// Tell root node we're done
