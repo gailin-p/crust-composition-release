@@ -236,7 +236,7 @@ int main(int argc, char **argv){
 			// Name, components, and basic options. Holland and Powell (2002) thermodynamic dataset and (1998) fluid equation state.
 			fprintf(fp,"%i\nhp02ver.dat\nperplex_option.dat\nn\nn\nn\nn\nSIO2\nTIO2\nAL2O3\nFEO\nMGO\nCAO\nNA2O\nK2O\nH2O\nCO2\n\n5\n", index);
 			// Pressure gradient details
-			fprintf(fp,"3\nn\ny\n2\n1\n273.15\n%g\n1\n25000\ny\n", 550.0/ic[11]/dpdz);
+			fprintf(fp,"3\nn\ny\n2\n1\n273.15\n%g\n1\n20000\ny\n", 550.0/ic[11]/dpdz);
 			// Whole-rock composition
 			for(i=1; i<11; i++){
 				fprintf(fp,"%g ",ic[i]);
@@ -257,7 +257,7 @@ int main(int argc, char **argv){
 			// Create werami batch file
 			sprintf(path_string, "%swerami.txt", prefix);
 			fp=fopen(path_string,"w");
-			fprintf(fp,"%i\n3\n1\n1\n25000\n100\n2\nn\nn\n13\nn\nn\n15\nn\nn\n0\n0\n", index);
+			fprintf(fp,"%i\n3\n1\n1\n20000\n40\n2\nn\nn\n13\nn\nn\n15\nn\nn\n0\n0\n", index);
 			fclose(fp);
 
 			// Extract Perplex results with werami
