@@ -74,7 +74,7 @@ int main(int argc, char **argv){
 		double stop[12] = {-1};
 
 		// Open output file
-		fp=fopen("results.csv","w");	
+		fp=fopen("PerplexResults.csv","w");	
 		// Print format of output
 		fprintf(fp,"index\tP(bar)\tT(K)\trho\tVp\tVp/Vs\n");
 
@@ -154,15 +154,15 @@ int main(int argc, char **argv){
  		 * Location of scratch directory (ideally local scratch for each node)
  		 * This location may vary on your system - contact your sysadmin if
  		 * unsure								*/
-		const char scratchdir[]="./";	// Local directory
-//		const char scratchdir[]="/scratch/cbkeller/";
+		const char scratchdir[]="/scratch/cbkeller/";
+//		const char scratchdir[]="./";	// Local directory
 
 		/* Path to PerpleX executables and data files:				*/
 		const char pathtobuild[]="build";
 		const char pathtovertex[]="vertex";
 		const char pathtowerami[]="werami";
-		const char pathtodatafiles[]="./*.dat"; // Local directory
-//		const char pathtodatafiles[]="/scratch/gpfs/cbkeller/*.dat";
+//		const char pathtodatafiles[]="./*.dat"; // Local directory
+		const char pathtodatafiles[]="/scratch/gpfs/cbkeller/*.dat";
 		/************************************************************************/
 
 
@@ -242,7 +242,7 @@ int main(int argc, char **argv){
 				fprintf(fp,"%g ",ic[i]);
 			}
 			//Solution model
-			fprintf(fp,"\nn\nn\ny\nsolution_model.dat\nmelt(HP)\nO(HP)\nOpx(HP)\nOmph(GHP)\nGt(HP)\noAmph(DP)\ncAmph(DP)\nT\nB\nAnth\nChum\nChl(HP)\nBio(TCC)\nMica(CF)\nCtd(HP)\nIlHm(A)\nSp(HP)\nSapp(HP)\nSt(HP)\nfeldspar\nNeph(FB)\nScap\nDo(HP)\nF\n\nClosed System");	
+			fprintf(fp,"\nn\nn\ny\nsolution_model.dat\nmelt(HP)\nO(HP)\nOpx(HP)\nOmph(GHP)\nGt(HP)\noAmph(DP)\ncAmph(DP)\nT\nB\nAnth\nChl(HP)\nBio(TCC)\nMica(CF)\nCtd(HP)\nIlHm(A)\nSp(HP)\nSapp(HP)\nSt(HP)\nfeldspar\nDo(HP)\nF\n\nClosed System");	
 			fclose(fp);
 
 			// build PerpleX problem definition
