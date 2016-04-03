@@ -74,9 +74,9 @@ int main(int argc, char **argv){
 		double stop[12] = {-1};
 
 		// Open output file
-		fp=fopen("PerplexResults.csv","w");	
+//		fp=fopen("PerplexResults.csv","w");	
 		// Print format of output
-		fprintf(fp,"index\tP(bar)\tT(K)\trho\tVp\tVp/Vs\n");
+		fprintf(stdout,"index\tP(bar)\tT(K)\trho\tVp\tVp/Vs\n");
 
 		// Import 2-d source data array as a flat double array. Format:
 		// #, SiO2, TiO2, Al2O3, FeO, MgO, CaO, Na2O, K2O, H2O, CO2, tc1Crust
@@ -100,8 +100,8 @@ int main(int argc, char **argv){
 				MPI_Recv(results, resultrows*resultcolumns, MPI_DOUBLE, nextReady+1, 4, MPI_COMM_WORLD, &stats[nextReady]);
 
 				// Print results to file
-				fprintfflatindex(fp, results, buf[nextReady], '\t', resultrows, resultcolumns);
-				fflush(fp);
+				fprintfflatindex(stdout, results, buf[nextReady], '\t', resultrows, resultcolumns);
+//				fflush(fp);
 			}
 
 			//       *buf, count, datatype, dest, tag, comm	
@@ -124,8 +124,8 @@ int main(int argc, char **argv){
 				MPI_Recv(results, resultrows*resultcolumns, MPI_DOUBLE, nextReady+1, 4, MPI_COMM_WORLD, &stats[nextReady]);
 
 				// Print results to file
-				fprintfflatindex(fp, results, buf[nextReady], '\t', resultrows, resultcolumns);
-				fflush(fp);
+				fprintfflatindex(stdout, results, buf[nextReady], '\t', resultrows, resultcolumns);
+//				fflush(fp);
 			}
 
 			// Send stop signal
@@ -134,7 +134,7 @@ int main(int argc, char **argv){
 		}
 
 
-		fclose(fp);
+//		fclose(fp);
 	}
 
 	else {
@@ -161,8 +161,8 @@ int main(int argc, char **argv){
 		const char pathtobuild[]="build";
 		const char pathtovertex[]="vertex";
 		const char pathtowerami[]="werami";
-//		const char pathtodatafiles[]="./*.dat"; // Local directory
-		const char pathtodatafiles[]="/scratch/gpfs/cbkeller/*.dat";
+		const char pathtodatafiles[]="./*.dat"; // Local directory
+//		const char pathtodatafiles[]="/scratch/gpfs/cbkeller/*.dat";
 		/************************************************************************/
 
 
@@ -242,7 +242,7 @@ int main(int argc, char **argv){
 				fprintf(fp,"%g ",ic[i]);
 			}
 			//Solution model
-			fprintf(fp,"\nn\nn\ny\nsolution_model.dat\nmelt(HP)\nO(HP)\nOpx(HP)\nOmph(GHP)\nGt(HP)\noAmph(DP)\ncAmph(DP)\nT\nB\nAnth\nChl(HP)\nBio(TCC)\nMica(CF)\nCtd(HP)\nIlHm(A)\nSp(HP)\nSapp(HP)\nSt(HP)\nfeldspar\nDo(HP)\nF\n\nClosed System");	
+			fprintf(fp,"\nn\nn\ny\nsolution_model.dat\nO(HP)\nOpx(HP)\nOmph(GHP)\nGt(HP)\noAmph(DP)\ncAmph(DP)\nT\nB\nAnth\nChl(HP)\nBio(TCC)\nMica(CF)\nCtd(HP)\nIlHm(A)\nSp(HP)\nSapp(HP)\nSt(HP)\nfeldspar\nDo(HP)\nF\n\nClosed System");	
 			fclose(fp);
 
 			// build PerpleX problem definition
