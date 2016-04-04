@@ -457,6 +457,31 @@ void Knuth_nanstd(const double* const x, const uint32_t n, double* const restric
 	}
 }
 
+// Compute mean and standard deviation with Knuth's algorithm, ignoring NaN data
+void Knuth_nanstderr(const double* const x, const uint32_t n, double* const restrict mean, double* const restrict StdErr){
+	double delta, mu=0, m2=0;
+	uint32_t exists=0;
+
+	for (uint32_t i=0; i<n; i++){
+		if (!isnan(x[i])){
+			exists++;
+			delta = x[i] - mu;
+			mu += delta / exists;
+			m2 += delta*(x[i] - mu);
+		}
+	}
+
+	if (exists>1){
+		*mean = mu;
+		*StdErr = sqrt(m2/(exists-1)/exists);
+	} else if (exists==1 && n>1){
+		*mean = mu;
+		*StdErr = 0;
+	} else {
+		*mean = NAN;
+		*StdErr = NAN;
+	}
+}
 
 // Compute sum of a double array, excluding NaNs
 double nansum(const double* const x, const uint32_t n){
@@ -570,7 +595,7 @@ void Offset_nanvar(const double* const x, const uint32_t n, double* const restri
 			S2 += (x[i]-*mu) * (x[i]-*mu);
 		}
 	}
-	*var=sqrt((S2 - (S*S)/exists)/(exists-1));
+	*var=(S2 - (S*S)/exists)/(exists-1);
 }
 
 // Compute mean and standard deviation of an array, excluding NaNs
@@ -586,6 +611,21 @@ void Offset_nanstd(const double* const x, const uint32_t n, double* const restri
 		}
 	}
 	*sigma=sqrt((S2 - (S*S)/exists)/(exists-1));
+}
+
+// Compute mean and standard deviation of an array, excluding NaNs
+void Offset_nanstderr(const double* const x, const uint32_t n, double* const restrict mu, double* const restrict StdErr){
+	*mu=nanmean(x,n);
+	double S=0.0, S2=0.0;
+	uint32_t exists=0;
+	for (uint32_t i=0; i<n; i++){
+		if (!isnan(x[i])){
+			exists++;
+			S += x[i]-*mu;
+			S2 += (x[i]-*mu) * (x[i]-*mu);
+		}
+	}
+	*StdErr=sqrt((S2 - (S*S)/exists)/(exists-1)/exists);
 }
 
 // Normalize a double array, excluding NaNs
