@@ -3,8 +3,7 @@
 #include <math.h>
 #include <time.h>
 #include "arrays.h"
-//#include "pcg_variants.h"
-//#include "gauss.h"
+
 
 int main(int argc, char **argv){
 	uint32_t datarows, datacolumns;
@@ -76,8 +75,8 @@ int main(int argc, char **argv){
 				// Find best pressure match for first pressure
 				p1 = pressure[0*prows + i];
 				p2 = pressure[1*prows + i];
-				rmin1 = p;
-				rmin2 = p;
+				rmin1 = p1;
+				rmin2 = p2;
 				k1 = 0;
 				k2 = 0;
 				for (k=0; k<100; k++){
@@ -92,9 +91,9 @@ int main(int argc, char **argv){
 						k2 = k;
 					}
 				}
-				Offset_nanstderr(&data[3*datarows + j + min(k1,k2)], (uint32_t)abs(k2-k1), &Rho[i], &RhoStdErr[i]);
-				Offset_nanstderr(&data[4*datarows + j + min(k1,k2)], (uint32_t)abs(k2-k1), &Vp[i], &VpStdErr[i]);
-				Offset_nanstderr(&data[5*datarows + j + min(k1,k2)], (uint32_t)abs(k2-k1), &VpVs[i], &VpVsStdErr[i]);
+				Offset_nanstderr(&data[3*datarows + j + minInt(k1,k2)], (uint32_t)abs(k2-k1), &Rho[i], &RhoStdErr[i]);
+				Offset_nanstderr(&data[4*datarows + j + minInt(k1,k2)], (uint32_t)abs(k2-k1), &Vp[i], &VpStdErr[i]);
+				Offset_nanstderr(&data[5*datarows + j + minInt(k1,k2)], (uint32_t)abs(k2-k1), &VpVs[i], &VpVsStdErr[i]);
 
 
 				// Save fitting results
@@ -117,7 +116,7 @@ int main(int argc, char **argv){
 	for (i=0; i<indexrows; i++) fprintf(fp, "%g\t%g\n", Vp[i], VpStdErr[i]);
 	fclose(fp);
 	fp = fopen("VpVs.csv","w");
-	for (i=0; i<indexrows; i++) fprintf(fp, "%g\t%n\n", VpVs[i], VpStdErr[i]);
+	for (i=0; i<indexrows; i++) fprintf(fp, "%g\t%g\n", VpVs[i], VpStdErr[i]);
 	fclose(fp);
 
 		
