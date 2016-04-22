@@ -1,6 +1,16 @@
 #include <stdlib.h>
 #include <math.h>
 
+
+// Interpolate the value of a double array at a single non-interger index
+double interp1i(const double* array, double i){
+	uint32_t f = (uint32_t) floor(i);
+	
+	return array[f+1]*(i-f) + array[f]*(1 - (i-f));	
+}
+
+
+
 // Make a 1d array of points spaced by Step between Lower and Upper
 double* array(double lower, double step, double upper){
 	if (step<=0){
@@ -584,7 +594,7 @@ double nanstd(const double* const x, const uint32_t n){
 }
 
 // Compute mean and standard deviation of an array, excluding NaNs
-void Offset_nanvar(const double* const x, const uint32_t n, double* const restrict mu, double* const restrict var){
+int Offset_nanvar(const double* const x, const uint32_t n, double* const restrict mu, double* const restrict var){
 	*mu=nanmean(x,n);
 	double S=0.0, S2=0.0;
 	uint32_t exists=0;
@@ -596,10 +606,11 @@ void Offset_nanvar(const double* const x, const uint32_t n, double* const restri
 		}
 	}
 	*var=(S2 - (S*S)/exists)/(exists-1);
+	return 0;
 }
 
 // Compute mean and standard deviation of an array, excluding NaNs
-void Offset_nanstd(const double* const x, const uint32_t n, double* const restrict mu, double* const restrict sigma){
+int Offset_nanstd(const double* const x, const uint32_t n, double* const restrict mu, double* const restrict sigma){
 	*mu=nanmean(x,n);
 	double S=0.0, S2=0.0;
 	uint32_t exists=0;
@@ -611,10 +622,11 @@ void Offset_nanstd(const double* const x, const uint32_t n, double* const restri
 		}
 	}
 	*sigma=sqrt((S2 - (S*S)/exists)/(exists-1));
+	return 0;
 }
 
 // Compute mean and standard deviation of an array, excluding NaNs
-void Offset_nanstderr(const double* const x, const uint32_t n, double* const restrict mu, double* const restrict StdErr){
+int Offset_nanstderr(const double* const x, const uint32_t n, double* const restrict mu, double* const restrict StdErr){
 	*mu=nanmean(x,n);
 	double S=0.0, S2=0.0;
 	uint32_t exists=0;
@@ -626,18 +638,20 @@ void Offset_nanstderr(const double* const x, const uint32_t n, double* const res
 		}
 	}
 	*StdErr=sqrt((S2 - (S*S)/exists)/(exists-1)/exists);
+	return 0;
 }
 
-// Normalize a double array, excluding NaNs
-void normalize(double* x, uint32_t n){
+// De-mean a double array, excluding NaNs
+int normalize(double* restrict x, const uint32_t n){
 	double mu=nanmean(x,n);
 	for (uint32_t i=0; i<n; i++){
 		x[i]-=mu;
 	}
+	return 0;
 }
 
-// Normalize a double array, excluding NaNs
-void standardize(double* x, uint32_t n){
+// Standardize a double array to zero mean and unit variance, excluding NaNs
+int standardize(double* restrict x, const uint32_t n){
 	double mu, sigma;
 	Offset_nanstd(x,n,&mu,&sigma);
 	if (sigma>0){
@@ -649,7 +663,49 @@ void standardize(double* x, uint32_t n){
 			x[i] = (x[i]-mu);
 		}
 	}
+	return 0;
 }
+
+
+//// Calculate an MSWD
+//double mswd(const double* x, const double* sigma, const uint32_t n){
+//	uint32_t i;
+//	double s1 = 0,  s2 = 0, s3 = 0;
+//	for(i=0; i<n; i++){
+//		s1 += x[i] / (sigma[i]*sigma[i]);
+//		s2 += 1 / (sigma[i]*sigma[i]);
+//	}
+//	double wx = s1/s2;
+//
+//	for(i=0; i<n; i++){
+//		s3 += (x[i]-wx)*(x[i]-wx) / (sigma[i]*sigma[i]);
+//	}
+//
+//	return s3 / (n-1);
+//}
+
+// Calculate a weigted mean, including MSWD.
+int wmean(const double* x, const double* sigma, const uint32_t n, double* wx, double* wsigma, double* mswd){
+	uint32_t i;
+	double s0 = 0, s1 = 0,  s2 = 0, s3 = 0;
+	for(i=0; i<n; i++){
+		s0 += 1 / sigma[i];
+		s1 += x[i] / (sigma[i]*sigma[i]);
+		s2 += 1 / (sigma[i]*sigma[i]);
+	}
+	*wx = s1/s2;
+
+	for(i=0; i<n; i++){
+		s3 += (x[i] - *wx)*(x[i] - *wx) / (sigma[i]*sigma[i]);
+	}
+
+	*mswd = s3 / (n-1);
+	*wsigma = sqrt(*mswd/s0);
+
+	return 0;
+}
+
+
 
 // From wikipedia (public domain)
 /* Comparison function. Receives two generic (void) pointers. */
@@ -668,8 +724,9 @@ int compare_ints(const void *p, const void *q){
 }
  
 /* Sort an array of n integers, pointed to by a. */
-void sort_ints(int *a, size_t n){
+int sort_ints(int *a, size_t n){
 	qsort(a, n, sizeof(int), compare_ints);
+	return 0;
 }
 
 // Sort an array and delete nonunique elements
@@ -706,8 +763,9 @@ int compare_uints(const void *p, const void *q){
 }
  
 /* Sort an array of n integers, pointed to by a. */
-void sort_uints(int *a, size_t n){
+int sort_uints(int *a, size_t n){
 	qsort(a, n, sizeof(uint32_t), compare_uints);
+	return 0;
 }
 
 // Sort an array and delete nonunique elements
@@ -723,6 +781,49 @@ uint32_t unique_uints(uint32_t *a, const uint32_t np){
 		}
 	}
 	return k+1;
+}
+
+// Comparison function for doubles
+int compare_doubles(const void *p, const void *q){
+	double x = *(const double *)p;
+	double y = *(const double *)q;
+
+	int ret;
+	if (x == y){
+		ret = 0;
+	} else {
+		ret = (x < y) ? -1 : 1;
+	}
+	return ret;
+}
+
+// Comparison function for doubles
+int compare_doubles_descending(const void *p, const void *q){
+	double x = *(const double *)p;
+	double y = *(const double *)q;
+
+	int ret;
+	if (x == y){
+		ret = 0;
+	} else {
+		ret = (x < y) ? 1 : -1;
+	}
+	return ret;
+}
+
+
+// Sort an array of n doubles, pointed to by a
+int sort_doubles(double *a, size_t n){
+	qsort(a, n, sizeof(a[0]), compare_doubles);
+	return 0;
+}
+
+#define sort_doubles_ascending	sort_doubles
+
+// Sort an array of n doubles, pointed to by a
+int sort_doubles_descending(double *a, size_t n){
+	qsort(a, n, sizeof(a[0]), compare_doubles_descending);
+	return 0;
 }
 
 
