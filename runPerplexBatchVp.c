@@ -1,32 +1,34 @@
 /******************************************************************************
- * FILE: runPerplexBatchVp.c
- * COMPILATION: mpicc -std=c99 -o runPerplexBatch runPerplexBatch.c
- * USAGE: mpiexec -np N ./runPerplexBatchVp ignmajors.csv
- *
- * DESCRIPTION:  
- *   Configures and runs PerpleX  seismic velocity calculations on N 
- *   processors for each bulk composition in ignmajors.csv, along a specified 
- *   geothermal gradient.
- *
- * PREREQUISITES:
- *   PerpleX (http://www.perplex.ethz.ch/)
- *
- * NOTES: 
- * 	This program uses the system() function and unix-like command-line 
- *   arguments. Consequently, it will likely only run as-is on Linux/Unix/BSD/Mac.
- *
- *   To use as-is, make sure the perplex executables build, vertex, and werami
- *   are on your $PATH, and place the three required .dat files (hp02ver.dat,
- *   perplex_option.dat, and solution_model.dat are in the current directory.
- *   Else, you can specify explicit paths to these files in the "simulation
- *   parameters section of the code below.
- *
- *   In order to run different types of perplex calculations (i.e., to 
- *   calculate something other than seismic velocites for the compositions
- *   in ignmajors.csv) you can edit the batch strings that are written to 
- *   build.txt and werami.txt. For more infomation on how this works,
- *   see http://www.perplex.ethz.ch/perplex_66_seismic_velocity.html
- *   and http://www.perplex.ethz.ch/faq/scripting.txt
+* FILE: runPerplexBatchVp.c
+* COMPILATION: mpicc -std=c99 -o runPerplexBatch runPerplexBatch.c
+* USAGE: mpiexec -np N ./runPerplexBatchVp ignmajors.csv
+*
+* DESCRIPTION:
+*   Configures and runs PerpleX  seismic velocity calculations on N
+*   processors for each bulk composition in ignmajors.csv, along a specified
+*   geothermal gradient.
+*
+* PREREQUISITES:
+*   PerpleX (http://www.perplex.ethz.ch/)
+*   MPI (e.g., https://www.mpich.org or https://www.open-mpi.org)
+*
+* NOTES:
+* 	This program uses the system() function and unix-like command-line
+*   arguments. Consequently, it will likely only run as-is on Linux/Unix/BSD/Mac.
+*
+*   To use as-is, make sure the perplex executables build, vertex, and werami
+*   are on your $PATH, and place the three required .dat files (hp02ver.dat,
+*   perplex_option.dat, and solution_model.dat are in the current directory.
+*   Else, you can specify explicit paths to these files in the "simulation
+*   parameters section of the code below.
+*
+*   In order to run different types of perplex calculations (i.e., to
+*   calculate something other than seismic velocites for the compositions
+*   in ignmajors.csv) you can edit the batch strings that are written to
+*   build.txt and werami.txt. For more infomation on how this works,
+*   see http://www.perplex.ethz.ch/perplex_66_seismic_velocity.html
+*   and http://www.perplex.ethz.ch/faq/scripting.txt
+*   Code available at: https://petrol.natur.cuni.cz/~ondro/perplex
 ******************************************************************************/
 
 #include <stdio.h>
@@ -55,7 +57,7 @@ int main(int argc, char **argv){
 	}
 
 	// Start MPI
-	rc = MPI_Init(&argc,&argv); 
+	rc = MPI_Init(&argc,&argv);
 	if (rc != MPI_SUCCESS) {
 		printf ("Error starting MPI program. Terminating.\n"); MPI_Abort(MPI_COMM_WORLD, rc);
 	}
@@ -74,7 +76,8 @@ int main(int argc, char **argv){
 		double stop[12] = {-1};
 
 		// Open output file
-//		fp=fopen("PerplexResults.csv","w");	
+		// fp=fopen("PerplexResults.csv","w"); // If not just printing to stdout
+
 		// Print format of output
 		fprintf(stdout,"index\tP(bar)\tT(K)\trho\tVp\tVp/Vs\n");
 
@@ -101,11 +104,13 @@ int main(int argc, char **argv){
 
 				// Print results to file
 				fprintfflatindex(stdout, results, buf[nextReady], '\t', resultrows, resultcolumns);
-//				fflush(fp);
+				// fflush(fp); // if not printing to stdout
 			}
 
-			//       *buf, count, datatype, dest, tag, comm	
-//			printf("0: Send data: Rank: %i\n", nextReady+1);
+			#ifdef DEBUG
+			printf("0: Send data: Rank: %i\n", nextReady+1);
+			#endif
+			//       *buf, count, datatype, dest, tag, comm
 			MPI_Send(data[i], 12, MPI_DOUBLE, nextReady+1, 1, MPI_COMM_WORLD); // Send next problem to work on
 			//        *buf, count, datatype, source, tag, comm, *request
 			MPI_Irecv(&buf[nextReady], 1, MPI_INT, nextReady+1, 0, MPI_COMM_WORLD, &reqs[nextReady]); // Keep waiting
@@ -115,7 +120,7 @@ int main(int argc, char **argv){
 		for (i=1; i<world_size; i++){
 			// Listen for task request
 			//	    count, MPI_Request, *index, MPI_Status
-			MPI_Waitany(world_size-1, reqs, &nextReady, stats); 
+			MPI_Waitany(world_size-1, reqs, &nextReady, stats);
 			// Get results from last calculation (if any)
 			if (buf[nextReady] > 0){
 				//       *buf, count, datatype, source, tag, comm, *status
@@ -125,16 +130,16 @@ int main(int argc, char **argv){
 
 				// Print results to file
 				fprintfflatindex(stdout, results, buf[nextReady], '\t', resultrows, resultcolumns);
-//				fflush(fp);
+				// fflush(fp); // If not printing to stdout
 			}
 
 			// Send stop signal
-//			printf("0: Stop: Rank: %i\n", nextReady+1);
-			MPI_Send(&stop, 12, MPI_DOUBLE, nextReady+1, 1, MPI_COMM_WORLD);	
+			#ifdef DEBUG
+			printf("0: Stop: Rank: %i\n", nextReady+1);
+			#endif
+			MPI_Send(&stop, 12, MPI_DOUBLE, nextReady+1, 1, MPI_COMM_WORLD);
 		}
-
-
-//		fclose(fp);
+		// fclose(fp); // If not printing to stdout
 	}
 
 	else {
@@ -146,23 +151,23 @@ int main(int argc, char **argv){
 		char* cmd_string = malloc(1000*sizeof(char));
 		char* path_string = malloc(500*sizeof(char));
 		// Initialize index with negative value tell root node we don't have results yet
-		int index = -1.0; 
+		int index = -1.0;
 
 		/************************************************************************
- 		 * Simulation Parameters:
- 		 *
- 		 * Location of scratch directory (ideally local scratch for each node)
- 		 * This location may vary on your system - contact your sysadmin if
- 		 * unsure								*/
-		const char scratchdir[]="/scratch/cbkeller/";
-//		const char scratchdir[]="./";	// Local directory
+		 * Simulation Parameters:
+		 *
+		 * Location of scratch directory (ideally local scratch for each node)
+		 * This location may vary on your system - contact your sysadmin if
+		 * unsure                                                               */
+		 const char scratchdir[]="/scratch/cbkeller/";
+		 // const char scratchdir[]="./";	// Local directory
 
-		/* Path to PerpleX executables and data files:				*/
-		const char pathtobuild[]="build";
-		const char pathtovertex[]="vertex";
-		const char pathtowerami[]="werami";
-		const char pathtodatafiles[]="./*.dat"; // Local directory
-//		const char pathtodatafiles[]="/scratch/gpfs/cbkeller/*.dat";
+		/* Path to PerpleX executables and data files:                          */
+		 const char pathtobuild[]="build";
+		 const char pathtovertex[]="vertex";
+		 const char pathtowerami[]="werami";
+		 const char pathtodatafiles[]="./*.dat"; // Local directory
+		// const char pathtodatafiles[]="/scratch/gpfs/cbkeller/*.dat";
 		/************************************************************************/
 
 
@@ -171,18 +176,24 @@ int main(int argc, char **argv){
 
 		while (1) {
 			// Ask root node for task to work on
+			#ifdef DEBUG
+			printf("%i: Asking root for new task\n", world_rank);
+			#endif
 			//       *buf, count, datatype, dest, tag, comm, *request
-//			printf("%i: Asking root for new task\n", world_rank);
 			MPI_Isend(&index, 1, MPI_INT, ROOT, 0, MPI_COMM_WORLD, &sReq);
-			
+
 			// Send results of last task (if any) back to root node and free result array
 			if (index>0){
-//				printf("%i: Sending results back to root\n", world_rank);
-				//       *buf, count, datatype, dest, tag, command
+				#ifdef DEBUG
+				printf("%i: Sending results back to root\n", world_rank);
+				#endif
+				//        *buf, count, datatype, dest, tag, command
 				MPI_Send(&resultrows, 1, MPI_INT, ROOT, 2, MPI_COMM_WORLD);
 				MPI_Send(&resultcolumns, 1, MPI_INT, ROOT, 3, MPI_COMM_WORLD);
 				MPI_Send(results, resultrows*resultcolumns, MPI_DOUBLE, ROOT, 4, MPI_COMM_WORLD);
-//				printf("%i: Results sent to root\n", world_rank);
+				#ifdef DEBUG
+				printf("%i: Results sent to root\n", world_rank);
+				#endif
 				free(results);
 			}
 
@@ -200,26 +211,30 @@ int main(int argc, char **argv){
 			// Get calculation index from ic (round by casting to int)
 			index = (int) round(ic[0]);
 
-//			printf("%i: index: %i\n",world_rank,index);
+			#ifdef DEBUG
+			printf("%i: index: %i\n",world_rank,index);
+			#endif
 
 			// Exit loop if stop signal recieved
 			if (index == -1) {
-//				printf("%i: done!\n", world_rank);
+				#ifdef DEBUG
+				printf("%i: done!\n", world_rank);
+				#endif
 				break;
 			}
 
-//			//Override water
-//			ic[9]=2.0;
-//			//Override CO2
-//			ic[10]=0.1;
+			// //Override water
+			// ic[9]=2.0;
+			// //Override CO2
+			// ic[10]=0.1;
 
-//			// Print current whole-rock composition
-//			for (i=0; i<12; i++){
-//				printf("%g\t", ic[i]);
-//			}
-//			printf("\n");
+			// // Print current whole-rock composition
+			// for (i=0; i<12; i++){
+			// 	printf("%g\t", ic[i]);
+			// }
+			// printf("\n");
 
-			
+
 			//Configure working directory
 			sprintf(prefix,"%sout%i_%i/", scratchdir, world_rank, index);
 			sprintf(cmd_string,"rm -rf %s; mkdir -p %s", prefix, prefix);
@@ -234,15 +249,16 @@ int main(int argc, char **argv){
 			sprintf(path_string, "%sbuild.txt", prefix);
 			fp=fopen(path_string,"w");
 			// Name, components, and basic options. Holland and Powell (2002) thermodynamic dataset and (1998) fluid equation state.
-			fprintf(fp,"%i\nhp02ver.dat\nperplex_option.dat\nn\nn\nn\nn\nSIO2\nTIO2\nAL2O3\nFEO\nMGO\nCAO\nNA2O\nK2O\nH2O\nCO2\n\n5\n", index);
+			fprintf(fp,"%i\nhp02ver.dat\nperplex_option.dat\nn\nn\nn\nn\nSIO2\nTIO2\nAL2O3\nFEO\nMGO\nCAO\nNA2O\nK2O\nH2O\nCO2\n\n5\n", index); // Assuming PerpleX v6.7.2
 			// Pressure gradient details
-			fprintf(fp,"3\nn\ny\n2\n1\n273.15\n%g\n1\n20000\ny\n", 550.0/ic[11]/dpdz);
+			fprintf(fp,"3\nn\ny\n2\n1\n273.15\n%g\n1\n20000\ny\n", 550.0/ic[11]/dpdz); // Assuming PerpleX v6.7.2
 			// Whole-rock composition
 			for(i=1; i<11; i++){
 				fprintf(fp,"%g ",ic[i]);
 			}
 			//Solution model
-			fprintf(fp,"\nn\nn\ny\nsolution_model.dat\nO(HP)\nOpx(HP)\nOmph(GHP)\nGt(HP)\noAmph(DP)\ncAmph(DP)\nT\nB\nAnth\nChl(HP)\nBio(TCC)\nMica(CF)\nCtd(HP)\nIlHm(A)\nSp(HP)\nSapp(HP)\nSt(HP)\nfeldspar\nDo(HP)\nF\n\nClosed System");	
+			fprintf(fp,"\nn\nn\ny\nsolution_model.dat\nO(HP)\nOpx(HP)\nOmph(GHP)\nGt(HP)\noAmph(DP)\ncAmph(DP)\nT\nB\nAnth\nChl(HP)\nBio(TCC)\nMica(CF)\nCtd(HP)\nIlHm(A)\nSp(HP)\nSapp(HP)\nSt(HP)\nfeldspar\nDo(HP)\nF\n\nClosed System"); // Excluding melt (default)
+			// fprintf(fp,"\nn\nn\ny\nsolution_model.dat\nmelt(HP)\nO(HP)\nOpx(HP)\nOmph(GHP)\nGt(HP)\noAmph(DP)\ncAmph(DP)\nT\nB\nAnth\nChum\nChl(HP)\nBio(TCC)\nMica(CF)\nCtd(HP)\nIlHm(A)\nSp(HP)\nSapp(HP)\nSt(HP)\nfeldspar\nNeph(FB)\nScap\nDo(HP)\nF\n\nClosed System");	 // Including melt (probably a bad idea)
 			fclose(fp);
 
 			// build PerpleX problem definition
@@ -264,7 +280,7 @@ int main(int argc, char **argv){
 			sprintf(cmd_string,"cd %s; %s < werami.txt > /dev/null", prefix, pathtowerami);
 			system(cmd_string);
 
-			
+
 			// If results can't be found, clean up scratch directory and move on to next simulation
 			sprintf(cmd_string,"%s%i_1.tab", prefix, index);
 			if ((fp = fopen(cmd_string, "r")) == NULL) {
@@ -274,7 +290,7 @@ int main(int argc, char **argv){
 				index = -1;
 				continue;
 			}
-			
+
 			// Use sed to convert the .tab output file into a plain csv
 			sprintf(cmd_string, "cd %s; sed -e '1,/T(K)/d' -e 's/      /,/g' -e 's/,,*/,/g' %i_1.tab > %i.csv", prefix, index, index);
 			system(cmd_string);
@@ -282,8 +298,8 @@ int main(int argc, char **argv){
 			// Import results, if they exist. Format:
 			// P(bar) T(K) rho Vp(km/s) Vp/Vs
 			sprintf(path_string, "%s%i.csv", prefix, index);
-			results = csvparseflat(path_string,',', &resultrows, &resultcolumns);	
-	
+			results = csvparseflat(path_string,',', &resultrows, &resultcolumns);
+
 			// Can delete temp files after we've read them
 			sprintf(cmd_string,"rm -r %s", prefix);
 			system(cmd_string);
@@ -293,4 +309,3 @@ int main(int argc, char **argv){
 	MPI_Finalize();
 	return 0;
 }
-
