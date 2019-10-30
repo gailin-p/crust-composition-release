@@ -9,3 +9,5 @@
 *.fig
 .*.swp
 out*
+
+matlab/

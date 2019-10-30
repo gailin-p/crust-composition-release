@@ -1,12 +1,23 @@
-## --- Load requisite packages (may need to install first)
+## --- Load requisite Julia packages (may need to install first)
 
-    using StatGeochem, MAT, DelimitedFiles
+    # Load (and install if neccesary) the StatGeochem package which has the resampling functions we'll want
+    try
+        using StatGeochem
+    catch
+        using Pkg
+        Pkg.clone("https://github.com/brenhinkeller/StatGeochem.jl")
+        using StatGeochem
+    end
+
+    using Statistics, DelimitedFiles, MAT
     using ProgressMeter: @showprogress
+    using Plots; gr();
 
 ## --- Export out element compositions to run runPerplexBatchVp on cluster
 
     # Read igneous whole-rock geochemistry from .mat file
     ign = matread("igncn1.mat")
+    ign["elements"] = string.(ign["elements"]) # Since .mat apparently can't tell the difference between "B" and 'b'
 
     # List of elements we want to export (primarily out element oxides)
     elements = ["index","SiO2","TiO2","Al2O3","FeO","MgO","CaO","Na2O","K2O","H2O_Total","CO2","tc1Crust"]
@@ -40,7 +51,11 @@
     t = t .& (anhydrousnorm .< 101) .& (anhydrousnorm .> 90)
 
     # Write accepted samples to file
-    writedlm("ignmajors.csv", round.(outtable[t[:],:], digits=5), ',')
+    if isfile("ignmajors.csv")
+        @warn "ignmajors.csv already exists, was not overwritten!"
+    else
+        writedlm("ignmajors.csv", round.(outtable[t[:],:], digits=5), ',')
+    end
 
 ## --- Run Perplex on cluster for each sample
 
@@ -51,9 +66,10 @@
 
     # Read igneous whole-rock geochemistry from .mat file
     ign = matread("igncn1.mat")
+    ign["elements"] = string.(ign["elements"]) # Since .mat apparently can't tell the difference between "B" and 'b'
 
     # Read PerplexResults.log
-    perplexresults = importdataset("../PerplexResults.NoMelt.log", '\t')
+    perplexresults = importdataset("PerplexResults.NoMelt.log", '\t')
 
     # Index must be an integer
     perplexresults["index"] = Int.(perplexresults["index"])
@@ -68,8 +84,7 @@
     dpdz = 2818 * 9.8 / 10^5 *10^3
 
     # Assign calculated values
-    @showprogress 1 "Importing PerpleX results..." for i in unique(perplexresults["index"])
-
+    @showprogress 1 "Importing PerpleX results: " for i in unique(perplexresults["index"])
         # Find calculated seismic properties for sample with index i
         t = perplexresults["index"] .== i
 
@@ -109,10 +124,40 @@
         ign["err2srel"]["Calc_Lower_Rho"][row] = nanstd(rho[lower]) ./ ign["Calc_Lower_Rho"][row] * 2
         ign["err2srel"]["Calc_Lower_Vp"][row] = nanstd(vp[lower]) ./ ign["Calc_Lower_Vp"][row] * 2
         ign["err2srel"]["Calc_Lower_VpVs"][row] = nanstd(vpvs[lower]) ./ ign["Calc_Lower_VpVs"][row] * 2
-
     end
 
 ## --- Bootstrap resampling
+
+    # Calculate spatiotemporal sample density factor ("inverse weight")
+    k = invweight(ign["Latitude"], ign["Longitude"], ign["Age"])
+
+    # Probability of keeping a given data point when sampling:
+    # We want to select roughly one-fith of the full dataset in each re-sample,
+    # which means an average resampling probability <p> of about 0.2
+    p = 1.0 ./ ((k .* median(5.0 ./ k)) .+ 1.0)
+
+    # Absolute uncertainties for each variable:
+    # Start with default 2-sigma relative uncertainties from err2srel
+    for e in ign["elements"]
+        ign["err"][e] = ign[e] .* (ign["err2srel"][e] / 2)
+    end
+
+    # Special cases: Latitude & Longitude
+    ign["err"]["Latitude"] = ign["Loc_Prec"]
+    ign["err"]["Longitude"] = ign["Loc_Prec"]
+
+    # Special cases: Age
+    ign["err"]["Age"] = (ign["Age_Max"]-ign["Age_Min"])/2;
+    # Find points with < 50 Ma absolute uncertainty
+    t = (ign["err"]["Age"] .< 50) .| isnan.(ign["err"]["Age"])
+    # Set 50 Ma minimum age uncertainty (1-sigma)
+    ign["err"]["Age"][t] .= 50;
+
+## --  Resample a few hundred times (all elements at once)
+
+    elements = ["index", "Latitude", "Longitude", "Elevation", "Age", "SiO2", "TiO2", "Al2O3", "Fe2O3", "Fe2O3T", "FeO", "FeOT", "MgO", "CaO", "Na2O", "K2O", "P2O5", "MnO", "H2O_Total", "La", "Ce", "Pr", "Nd", "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb", "Lu", "Li", "Be", "B", "C", "CO2", "F", "Cl", "Sc", "Ti", "V", "Cr", "Co", "Ni", "Cu", "Zn", "Ga", "Zr", "Os", "Rb", "Bi", "Hg", "Ba", "Y", "Pb", "Te", "Nb", "Sr87_Sr86", "Tl", "Pt", "Sn", "Cd", "As", "Pd", "Sr", "Se", "S", "Au", "Ta", "Mo", "U", "Cs", "Sb", "Ag", "W", "Th", "Re", "Hf", "Ir", "tc1Lith", "tc1Crust", "Crust", "Vp", "Vs", "Rho", "Upper_Crust", "Upper_Vp", "Upper_Vs", "Upper_Rho", "Middle_Crust", "Middle_Vp", "Middle_Vs", "Middle_Rho", "Lower_Crust", "Lower_Vp", "Lower_Vs", "Lower_Rho", "Freeair", "Bouger", "Eustar", "Calc_Upper_Vp", "Calc_Upper_VpVs", "Calc_Upper_Rho", "Calc_Middle_Vp", "Calc_Middle_VpVs", "Calc_Middle_Rho", "Calc_Lower_Vp", "Calc_Lower_VpVs", "Calc_Lower_Rho"]
+    nrows = 10^7 # Resample up to...
+    mcign = bsresample(ign, nrows, elements, p)
 
 ## --- PCA
 
