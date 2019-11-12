@@ -15,6 +15,7 @@
     using Logging
     using MultivariateStats
     using Random
+    using HDF5
 
     include("bin.jl")
 
@@ -74,7 +75,7 @@
     ign["elements"] = string.(ign["elements"]) # Since .mat apparently can"t tell the difference between "B" and "b"
 
     # Read PerplexResults.log
-    perplexresults = importdataset("data/runProduction-goodrho-short.log", '\t')
+    perplexresults = importdataset("data/runTestNew.small.log", '\t')
 
     # Index must be an integer
     perplexresults["index"] = Int.(perplexresults["index"])
@@ -134,7 +135,6 @@
     end
 
 ## --- Bootstrap resampling
-# GAILIN - are NaNs ok? How does resampling handle NaNs in Calc_ values?
 
     # Calculate spatiotemporal sample density factor ("inverse weight")
     k = invweight(ign["Latitude"], ign["Longitude"], ign["Age"])
@@ -283,14 +283,19 @@ age_centers, elt_means, elt_errors = bin(mcign["Age"], mcign[elem],
         tmin, tmax, length(mcign["SiO2"])/length(ign["SiO2"]), nbins)
 plot!(age_centers, elt_means, yerror=elt_errors, label="Exposed");
 
-plot!(xlabel="Age")
-plot!(ylabel="SiO2 composition")
-plot!(title="Composition estimations")
-savefig(p, "small-test-ages.svg");
+plot!(xlabel="Age");
+plot!(ylabel="SiO2 composition");
+plot!(title="Composition estimations");
+savefig(p, "composition-ages.svg");
 
-# hold on; binplot(mcigncn1.Age, mcigncn1.(elem), tmin, tmax, length(mcigncn1.SiO2)./length(igncn1.SiO2), nbins)
-#
+# Write resampled to an HDF5 file
+h5open("mcign.h5", "w") do file
+    write(file, "mcign", mcign)
+end
 
-
+# Write model to an HDF5 file
+h5open("pc1_model.h5", "w") do file
+    write(file, "projection", projection(model))
+end
 
 ## --- End of file
