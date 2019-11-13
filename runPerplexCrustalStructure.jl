@@ -182,7 +182,7 @@
 
 features = ["Rho", "Vp", "VpVs"]
 layers = ["Upper", "Middle", "Lower"]
-models = Dict{String,Any}()
+models = Dict{String,Any}() # Hold PCA models and means
 
 @showprogress "Running PCA for upper, middle, lower crust: " for crust in layers
 #crust = "Upper"
@@ -193,6 +193,12 @@ models = Dict{String,Any}()
     Vp_Std = nanstd(mcign["Calc_" * crust * "_Vp"]);
     VpVs_Mean = nanmean(mcign["Calc_" * crust * "_VpVs"]);
     VpVs_Std = nanstd(mcign["Calc_" * crust * "_VpVs"]);
+    models[crust * "_Rho_Mean"] = Rho_Mean
+    models[crust * "_Rho_Std"] = Rho_Std
+    models[crust * "_Vp_Mean"] = Vp_Mean
+    models[crust * "_Vp_Std"] = Vp_Std
+    models[crust * "_VpVs_Mean"] = VpVs_Mean
+    models[crust * "_VpVs_Std"] = VpVs_Std
 
     CalcRhoNorm = (mcign["Calc_" * crust * "_Rho"] .- Rho_Mean) ./ Rho_Std;
     CalcVpNorm = (mcign["Calc_" * crust * "_Vp"] .- Vp_Mean) ./ Vp_Std;
@@ -305,7 +311,7 @@ h5open("pc1_model.h5", "w") do file
     end
 end
 
-jldopen("pc1_model.jdl", "w") do file
+jldopen("pc1_model.jld", "w") do file
     for (i, keyval) in enumerate(models)
         write(file, keyval[1], keyval[2])
     end
