@@ -16,6 +16,7 @@
     using MultivariateStats
     using Random
     using HDF5
+    using JLD
 
     include("bin.jl")
 
@@ -181,6 +182,7 @@
 
 features = ["Rho", "Vp", "VpVs"]
 layers = ["Upper", "Middle", "Lower"]
+models = Dict{String,Any}()
 
 @showprogress "Running PCA for upper, middle, lower crust: " for crust in layers
 #crust = "Upper"
@@ -202,6 +204,7 @@ layers = ["Upper", "Middle", "Lower"]
 
     # PCA
     model = fit(PCA, samples)
+    models[crust] = model # Save
     mcign["Calc_" * crust * "_PC1"] = transform(model, samples)[1,:]
 
     # Add VpVs, if necessary
@@ -290,12 +293,22 @@ savefig(p, "composition-ages.svg");
 
 # Write resampled to an HDF5 file
 h5open("mcign.h5", "w") do file
-    write(file, "mcign", mcign)
+    for (i, keyval) in enumerate(mcign)
+        write(file, string(keyval[1]), keyval[2])
+    end
 end
 
 # Write model to an HDF5 file
 h5open("pc1_model.h5", "w") do file
-    write(file, "projection", projection(model))
+    for (i, keyval) in enumerate(models)
+        write(file, keyval[1], projection(keyval[2]))
+    end
+end
+
+jldopen("pc1_model.jdl", "w") do file
+    for (i, keyval) in enumerate(models)
+        write(file, keyval[1], keyval[2])
+    end
 end
 
 ## --- End of file
