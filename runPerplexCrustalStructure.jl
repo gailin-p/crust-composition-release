@@ -280,7 +280,7 @@ tmax = 4000
 # For each crust type
 #@showprogress "Running composition: " for crust in layers
 p = plot(size=(1800,1200));
-r = plot(); # plot relationship between composition and PC1
+r = plot(ize=(1800,1200)); # plot relationship between composition and PC1
 for crust in layers
     mcign[crust * '_' * iVar * '_' * elem] = fill(NaN, length(mcign["Age"]));
 
