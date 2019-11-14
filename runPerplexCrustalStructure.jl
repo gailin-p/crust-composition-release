@@ -17,8 +17,27 @@
     using Random
     using HDF5
     using JLD
+    using ArgParse
 
     include("bin.jl")
+
+# Read user args: prefix for result files, input file names
+s = ArgParseSettings()
+@add_arg_table s begin
+    "--perplex", "-p"
+        help = "Path to perplex results file"
+        arg_type = String
+        required = true
+    "--data_prefix", "-o"
+        help = "Prefix for output data files"
+        arg_type= String
+        default = ""
+    "--figure_prefix", "-f"
+        help = "Prefix for output figures"
+        arg_type = String
+        default = ""
+end
+parsed_args = parse_args(ARGS, s)
 
 # ## --- Export out element compositions to run runPerplexBatchVp on cluster
 #
@@ -76,7 +95,7 @@
     ign["elements"] = string.(ign["elements"]) # Since .mat apparently can"t tell the difference between "B" and "b"
 
     # Read PerplexResults.log
-    perplexresults = importdataset("data/runTestNew.small.log", '\t')
+    perplexresults = importdataset(parsed_args["perplex"], '\t')
 
     # Index must be an integer
     perplexresults["index"] = Int.(perplexresults["index"])
@@ -234,23 +253,44 @@ models = Dict{String,Any}() # Hold PCA models and means
 
 end
 
-## --- Estimate compositions
-nbins = 8
-tmin = 0
-tmax = 4000
+## --- Variables to explore TODO make these args
 iVar = "PC1"
 elem = "SiO2"
 
+## --- Plot calculated relationship between composition and PC1
+# p = plot();
+# for crust in layers
+#     # Bin PC1 of samples as a fn of composition
+#     x = mcign[elem]
+#     xmin = percentile(x, .5)
+#     xmax = percentile(x,99.5)
+#     c, m, e = bin(x, mcign["Calc_"*crust*"_"*iVar], xmin, xmax,
+#         length(mcign["SiO2"])/length(ign["SiO2"]), 40)
+# end
+
+
+
+## --- Estimate compositions
+
+# Constants TODO make these args
+nbins = 8
+tmin = 0
+tmax = 4000
+
 # For each crust type
 #@showprogress "Running composition: " for crust in layers
-p = plot();
+p = plot(size=(1800,1200));
+r = plot(); # plot relationship between composition and PC1
 for crust in layers
     mcign[crust * '_' * iVar * '_' * elem] = fill(NaN, length(mcign["Age"]));
 
     # For each age bin
     rt = tmin:(tmax-tmin)/nbins:tmax
     for j = 1:nbins
+        # Samples within age bin
         test = (mcign["Age"] .> rt[j]) .& (mcign["Age"] .< rt[j+1])
+
+        # Samples with non-null perplex results
         element_test = map(!isnan, mcign["Calc_" * crust * "_Rho"] .+
                 mcign["Calc_" * crust * "_Vp"] .+ mcign["Calc_" * crust * "_VpVs"])
 
@@ -263,6 +303,11 @@ for crust in layers
         # center (seismic), mean (element of interest eg SiO2), error
         c, m, e = bin(x, mcign[elem][element_test], xmin, xmax,
             length(mcign["SiO2"])/length(ign["SiO2"]), 40)
+
+        # plot relationship for this age bin and layer
+        if j == 1 # Same relationship for all age bins within a layer
+            plot!(r, c, m, yerror=e, label=crust);
+        end
 
         # Interpolate (element of interest) values for each (obs seismic) sample in the dataset
         itp = interpolate(m, BSpline(Linear())) # Linear interpolation of bin means
@@ -284,28 +329,34 @@ for crust in layers
     #% Plot the temporal trend for this crust type
     age_centers, elt_means, elt_errors = bin(mcign["Age"], mcign[crust * "_" * iVar * "_" * elem],
             tmin, tmax, length(mcign["SiO2"])/length(ign["SiO2"]), nbins)
-    plot!(age_centers, elt_means, yerror=elt_errors, label=crust);
+    plot!(p, age_centers, elt_means, yerror=elt_errors, label=crust);
 end
 
 # Plot exposed
 age_centers, elt_means, elt_errors = bin(mcign["Age"], mcign[elem],
         tmin, tmax, length(mcign["SiO2"])/length(ign["SiO2"]), nbins)
-plot!(age_centers, elt_means, yerror=elt_errors, label="Exposed");
+plot!(p, age_centers, elt_means, yerror=elt_errors, label="Exposed");
 
-plot!(xlabel="Age");
-plot!(ylabel="SiO2 composition");
-plot!(title="Composition estimations");
-savefig(p, "composition-ages.svg");
+plot!(p,xlabel="Age");
+plot!(p,ylabel="SiO2 composition");
+plot!(p,title="Composition estimations");
+savefig(p, parsed_args["figure_prefix"]*"composition-ages.png");
+
+# Save relationship plot
+plot!(r,xlabel="PC1 of perple_x seismic data");
+plot!(r,ylabel="SiO2 composition");
+plot!(r,title="PC1-composition relationships");
+savefig(r, parsed_args["figure_prefix"]*"composition-pc1-relationship.png");
 
 # Write resampled to an HDF5 file
-h5open("mcign.h5", "w") do file
+h5open(parsed_args["data_prefix"]*"mcign.h5", "w") do file
     for (i, keyval) in enumerate(mcign)
         write(file, string(keyval[1]), keyval[2])
     end
 end
 
 # Write model to a file
-jldopen("pc1_model.jld", "w") do file
+jldopen(parsed_args["data_prefix"]*"pc1_model.jld", "w") do file
     for (i, keyval) in enumerate(models)
         write(file, keyval[1], keyval[2])
     end
