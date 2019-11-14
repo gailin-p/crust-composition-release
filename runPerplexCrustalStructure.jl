@@ -304,13 +304,7 @@ h5open("mcign.h5", "w") do file
     end
 end
 
-# Write model to an HDF5 file
-h5open("pc1_model.h5", "w") do file
-    for (i, keyval) in enumerate(models)
-        write(file, keyval[1], projection(keyval[2]))
-    end
-end
-
+# Write model to a file
 jldopen("pc1_model.jld", "w") do file
     for (i, keyval) in enumerate(models)
         write(file, keyval[1], keyval[2])
