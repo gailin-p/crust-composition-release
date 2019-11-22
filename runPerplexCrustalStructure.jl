@@ -279,8 +279,8 @@ tmax = 4000
 
 # For each crust type
 #@showprogress "Running composition: " for crust in layers
-p = plot(size=(1800,1200));
-r = plot(ize=(1800,1200)); # plot relationship between composition and PC1
+p = plot(size=(900,600));
+r = plot(ize=(900,600)); # plot relationship between composition and PC1
 for crust in layers
     mcign[crust * '_' * iVar * '_' * elem] = fill(NaN, length(mcign["Age"]));
 
@@ -340,13 +340,13 @@ plot!(p, age_centers, elt_means, yerror=elt_errors, label="Exposed");
 plot!(p,xlabel="Age");
 plot!(p,ylabel="SiO2 composition");
 plot!(p,title="Composition estimations");
-savefig(p, parsed_args["figure_prefix"]*"composition-ages.png");
+savefig(p, parsed_args["figure_prefix"]*"composition-ages.pdf");
 
 # Save relationship plot
 plot!(r,xlabel="PC1 of perple_x seismic data");
 plot!(r,ylabel="SiO2 composition");
 plot!(r,title="PC1-composition relationships");
-savefig(r, parsed_args["figure_prefix"]*"composition-pc1-relationship.png");
+savefig(r, parsed_args["figure_prefix"]*"composition-pc1-relationship.pdf");
 
 # Write resampled to an HDF5 file
 h5open(parsed_args["data_prefix"]*"mcign.h5", "w") do file
