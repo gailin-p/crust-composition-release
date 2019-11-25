@@ -3,16 +3,16 @@
  * COMPILATION: mpicc -std=c99 -o runPerplexBatchVp runPerplexBatchVp.c
  * USAGE: mpiexec -np N ./runPerplexBatchVp ignmajors.csv
  *
- * DESCRIPTION:  
- *   Configures and runs PerpleX  seismic velocity calculations on N 
- *   processors for each bulk composition in ignmajors.csv, along a specified 
+ * DESCRIPTION:
+ *   Configures and runs PerpleX  seismic velocity calculations on N
+ *   processors for each bulk composition in ignmajors.csv, along a specified
  *   geothermal gradient.
  *
  * PREREQUISITES:
  *   PerpleX (http://www.perplex.ethz.ch/)
  *
- * NOTES: 
- * 	This program uses the system() function and unix-like command-line 
+ * NOTES:
+ * 	This program uses the system() function and unix-like command-line
  *   arguments. Consequently, it will likely only run as-is on Linux/Unix/BSD/Mac.
  *
  *   To use as-is, make sure the perplex executables build, vertex, and werami
@@ -21,9 +21,9 @@
  *   Else, you can specify explicit paths to these files in the "simulation
  *   parameters section of the code below.
  *
- *   In order to run different types of perplex calculations (i.e., to 
+ *   In order to run different types of perplex calculations (i.e., to
  *   calculate something other than seismic velocites for the compositions
- *   in ignmajors.csv) you can edit the batch strings that are written to 
+ *   in ignmajors.csv) you can edit the batch strings that are written to
  *   build.txt and werami.txt. For more infomation on how this works,
  *   see http://www.perplex.ethz.ch/perplex_66_seismic_velocity.html
  *   and http://www.perplex.ethz.ch/faq/scripting.txt
@@ -55,7 +55,7 @@ int main(int argc, char **argv){
 	}
 
 	// Start MPI
-	rc = MPI_Init(&argc,&argv); 
+	rc = MPI_Init(&argc,&argv);
 	if (rc != MPI_SUCCESS) {
 		printf ("Error starting MPI program. Terminating.\n"); MPI_Abort(MPI_COMM_WORLD, rc);
 	}
@@ -74,7 +74,7 @@ int main(int argc, char **argv){
 		double stop[12] = {-1};
 
 		// Open output file
-//		fp=fopen("PerplexResults.csv","w");	
+//		fp=fopen("PerplexResults.csv","w");
 		// Print format of output
 		fprintf(stdout,"index\tP(bar)\tT(K)\trho\tVp\tVp/Vs\n");
 
@@ -104,7 +104,7 @@ int main(int argc, char **argv){
 //				fflush(fp);
 			}
 
-			//       *buf, count, datatype, dest, tag, comm	
+			//       *buf, count, datatype, dest, tag, comm
 //			printf("0: Send data: Rank: %i\n", nextReady+1);
 			MPI_Send(data[i], 12, MPI_DOUBLE, nextReady+1, 1, MPI_COMM_WORLD); // Send next problem to work on
 			//        *buf, count, datatype, source, tag, comm, *request
@@ -115,7 +115,7 @@ int main(int argc, char **argv){
 		for (i=1; i<world_size; i++){
 			// Listen for task request
 			//	    count, MPI_Request, *index, MPI_Status
-			MPI_Waitany(world_size-1, reqs, &nextReady, stats); 
+			MPI_Waitany(world_size-1, reqs, &nextReady, stats);
 			// Get results from last calculation (if any)
 			if (buf[nextReady] > 0){
 				//       *buf, count, datatype, source, tag, comm, *status
@@ -130,7 +130,7 @@ int main(int argc, char **argv){
 
 			// Send stop signal
 //			printf("0: Stop: Rank: %i\n", nextReady+1);
-			MPI_Send(&stop, 12, MPI_DOUBLE, nextReady+1, 1, MPI_COMM_WORLD);	
+			MPI_Send(&stop, 12, MPI_DOUBLE, nextReady+1, 1, MPI_COMM_WORLD);
 		}
 
 
@@ -146,7 +146,7 @@ int main(int argc, char **argv){
 		char* cmd_string = malloc(1000*sizeof(char));
 		char* path_string = malloc(500*sizeof(char));
 		// Initialize index with negative value tell root node we don't have results yet
-		int index = -1.0; 
+		int index = -1.0;
 
 		/************************************************************************
  		 * Simulation Parameters:
@@ -154,7 +154,7 @@ int main(int argc, char **argv){
  		 * Location of scratch directory (ideally local scratch for each node)
  		 * This location may vary on your system - contact your sysadmin if
  		 * unsure								*/
-		const char scratchdir[]="/scratch/gailin/"; // /scratch/gailin is local, /dartfs-hpc/scratch/gailin is shared 
+		const char scratchdir[]="/scratch/gailin/"; // /scratch/gailin is local, /dartfs-hpc/scratch/gailin is shared
 //		const char scratchdir[]="./";	// Local directory
 
 		/* Path to PerpleX executables and data files:				*/
@@ -175,7 +175,7 @@ int main(int argc, char **argv){
 			//       *buf, count, datatype, dest, tag, comm, *request
 //			printf("%i: Asking root for new task\n", world_rank);
 			MPI_Isend(&index, 1, MPI_INT, ROOT, 0, MPI_COMM_WORLD, &sReq);
-			
+
 			// Send results of last task (if any) back to root node and free result array
 			if (index>0){
 //				printf("%i: Sending results back to root\n", world_rank);
@@ -220,7 +220,7 @@ int main(int argc, char **argv){
 //			}
 //			printf("\n");
 
-			
+
 			//Configure working directory
 			sprintf(prefix,"%sout%i_%i/", scratchdir, world_rank, index);
 			sprintf(cmd_string,"rm -rf %s; mkdir -p %s", prefix, prefix);
@@ -243,7 +243,7 @@ int main(int argc, char **argv){
 				fprintf(fp,"%g ",ic[i]);
 			}
 			//Solution model
-			fprintf(fp,"\nn\nn\ny\nsolution_model.dat\nO(HP)\nOpx(HP)\nOmph(GHP)\nGt(HP)\noAmph(DP)\ncAmph(DP)\nT\nB\nAnth\nChl(HP)\nBio(TCC)\nMica(CF)\nCtd(HP)\nIlHm(A)\nSp(HP)\nSapp(HP)\nSt(HP)\nfeldspar\nDo(HP)\nF\n\nClosed System");	
+			fprintf(fp,"\nn\nn\ny\nsolution_model.dat\nO(HP)\nOpx(HP)\nOmph(GHP)\nGt(HP)\noAmph(DP)\nGlTrTsPg\nT\nAnth\nChl(HP)\nBio(TCC)\nMica(CF)\nCtd(HP)\nIlHm(A)\nSp(HP)\nSapp(HP)\nSt(HP)\nfeldspar\nDo(HP)\n\nClosed System");	
 			fclose(fp);
 
 			// build PerpleX problem definition
@@ -266,7 +266,7 @@ int main(int argc, char **argv){
 			sprintf(cmd_string,"cd %s; %s < werami.txt >> weramioutput.txt", prefix, pathtowerami);
 			system(cmd_string);
 
-			
+
 			// If results can't be found, clean up scratch directory and move on to next simulation
 			sprintf(cmd_string,"%s%i_1.tab", prefix, index);
 			if ((fp = fopen(cmd_string, "r")) == NULL) {
@@ -276,7 +276,7 @@ int main(int argc, char **argv){
 				index = -1;
 				continue;
 			}
-			
+
 			// Use sed to convert the .tab output file into a plain csv
 			sprintf(cmd_string, "cd %s; sed -e '1,/T(K)/d' -e 's/      /,/g' -e 's/,,*/,/g' %i_1.tab > %i.csv", prefix, index, index);
 			system(cmd_string);
@@ -284,8 +284,8 @@ int main(int argc, char **argv){
 			// Import results, if they exist. Format:
 			// P(bar) T(K) rho Vp(km/s) Vp/Vs
 			sprintf(path_string, "%s%i.csv", prefix, index);
-			results = csvparseflat(path_string,',', &resultrows, &resultcolumns);	
-	
+			results = csvparseflat(path_string,',', &resultrows, &resultcolumns);
+
 			// Can delete temp files after we've read them
 			sprintf(cmd_string,"rm -r %s", prefix);
 			system(cmd_string);
@@ -295,4 +295,3 @@ int main(int argc, char **argv){
 	MPI_Finalize();
 	return 0;
 }
-
