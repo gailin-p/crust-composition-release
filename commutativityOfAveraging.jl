@@ -7,6 +7,9 @@
 #
 ################################
 
+using MPI 
+MPI.Init()
+
 using ArgParse
 using DelimitedFiles
 using StatGeochem
@@ -17,8 +20,6 @@ using Plots; gr();
 
 # Average geotherm and layer depths
 # General options
-perplexdir = "/Users/gailin/dartmouth/crustal_structure/Perple_X/"
-scratchdir = "/Users/gailin/dartmouth/crustal_structure/perplexed_pasta/"
 exclude = ""
 dataset = "hpha02ver.dat"
 elts = ["SIO2", "TIO2", "AL2O3", "FEO", "MGO", "CAO", "NA2O", "K2O", "H2O", "CO2"]
@@ -58,83 +59,21 @@ s = ArgParseSettings()
         default = 2000
 end
 parsed_args = parse_args(ARGS, s)
+r_requested = parsed_args["n_runs"]
+n = parsed_args["n_samples"]
 
 comm = MPI.COMM_WORLD
 rank = MPI.Comm_rank(comm)
 nworkers = MPI.Comm_size(comm)-1
 
-if rank != 0 # I'm not boss; run perplex then send my results to 0.
-    # send
-    # How many samples should I run?
-    comm = MPI.COMM_WORLD
-    r = ceil(Int, r_total/nworkers)
-
-    # data: average seismic properties, seismic properties of average, indices
-    # for each of r runs, store upper, middle, lower; rho, vp, vpvs
-    # dimensions: run, layer, property
-    ave_properties = Array{Float64,3}(undef,(r,3,3))
-    props_of_ave = Array{Float64,3}(undef,(r,3,3))
-    indices = Array{Int,2}(undef,(r,n)) # store n indices for each of r runs, for reconstruction!
-
-    # run samples
-    runSamples!(props_of_ave, ave_properties, indices,
-                r, parsed_args["n_samples"],
-                parsed_args["ign"], parsed_args["perplex"], parsed_args["scratch"])
-
-    # Send my data
-    sreq1 = MPI.Isend(ave_properties, 0, rank, comm)
-    sreq2 = MPI.Isend(props_of_ave, 0, rank+1000, comm)
-    sreq3 = MPI.Isend(indices, 0, rank+2000, comm)
-    stats = MPI.Waitall!([sreq1, sreq2, sreq3])
-end
-
-if rank == 0 # I'm the boss, wait for results
-    rworker = ceil(Int, r_total/nworkers) # runs per worker
-    r = nworkers * rworker # total runs
-
-    ave_properties = Array{Float64,3}(undef,(r,3,3))
-    props_of_ave = Array{Float64,3}(undef,(r,3,3))
-    indices = Array{Int,2}(undef,(r,n)) # store n indices for each of r runs, for reconstruction!
-
-    # build recieve requests
-    reqs = Vector{MPI.Request}()
-    for w in 1:nworkers # worker ranks start at 1
-        start = (i-1)*rworker+1
-        rreq1 = MPI.Irecv!(view(ave_properties, start:start+rworker, :, :), w,  w, comm)
-        rreq2 = MPI.Irecv!(view(props_of_ave, start:start+rworker, :, :), w,  w+1000, comm)
-        rreq3 = MPI.Irecv!(view(indices, start:start+rworker, :), w,  w+2000, comm)
-        push!(reqs, rreq1)
-        push!(reqs, rreq2)
-        push!(reqs, rreq3)
-    end
-
-    # Wait patiently
-    MPI.Waitall!(reqs)
-
-    # Save data and plots
-    # Plot diffs
-    diffs = props_of_ave-ave_properties
-    layers = ["upper","middle","lower"]
-    props = ["rho","vp","vpvs"]
-    for l in 1:3
-        for p in 1:3
-           h = histogram(diffs[:,l,p], legend=false, xlabel="$(props[p]) difference")
-           savefig(h, "output/average/diff_hist_$(props[p])_$(layers[l])_n$(n)_r$(r).pdf")
-        end
-    end
-
-    # println(ave_properties)
-    # println(props_of_ave)
-    save("data/commutativity-n$(n)-r$(r).jld","ave_properties", ave_properties, "props_of_ave", props_of_ave, "indices", indices)
-
-end
-
-
 ### Run r samples
 # Return (ave properties, properties of averages, indices)
-# properties arrays are rx3x3, run x layer x property
-function runSamples(r::Int, n::Int, ignFile::String, perplexdir::String, scratchdir::String)
+# properties arrays are 3x3xr, layer x property x run
+function runSamples!(props_of_ave::Array{Float64,3}, ave_properties::Array{Float64,3}, indicies::Array{Int64,2}, 
+    r::Int, n::Int, ignFile::String, perplex::String, scratch::String)
     dat = readdlm(ignFile,',')
+
+    myindex = rand(Int)
 
     # run r sample pairs through perplex
     @showprogress 1 "Running samples... " for i in 1:r
@@ -144,16 +83,16 @@ function runSamples(r::Int, n::Int, ignFile::String, perplexdir::String, scratch
         # Run perplex for each composition
         for j in 1:n
             index = convert(Int, ceil(rand()*size(dat)[1]))
-            indices[i,j] = index
+            indices[j,i] = index
             sample = dat[index,:]
             comp = sample[2:11]
             allComp[j,:] = comp
             # Run perple_x
             perplex_configure_geotherm(perplex, scratch, comp, elements=elts,
                 P_range=P_range, geotherm=geotherm, dataset=dataset, solution_phases=solutions_nof,
-                excludes="", npoints=npoints)
+                excludes="", index=myindex, npoints=npoints)
 
-            seismic = perplex_query_seismic(perplexdir, scratchdir)
+            seismic = perplex_query_seismic(perplex, scratch, index=myindex)
             allSeismic[j]=seismic
         end
 
@@ -174,11 +113,11 @@ function runSamples(r::Int, n::Int, ignFile::String, perplexdir::String, scratch
         for j in 1:10
             aveComp[j] = mean(allComp[:,j])
         end
-        perplex_configure_geotherm(perplexdir, scratchdir, aveComp, elements=elts,
+        perplex_configure_geotherm(perplex, scratch, aveComp, elements=elts,
             P_range=P_range, geotherm=geotherm, dataset=dataset, solution_phases=solutions_nof,
-            excludes="", npoints=npoints)
+            excludes="", npoints=npoints, index=myindex)
 
-        seismicOfAve = perplex_query_seismic(perplexdir, scratchdir)
+        seismicOfAve = perplex_query_seismic(perplex, scratch, index=myindex)
 
         # Average seismic properties over depth layer
         # (TODO is this ok? we're trying to *test* the legitimacy of averaging)
@@ -188,14 +127,87 @@ function runSamples(r::Int, n::Int, ignFile::String, perplexdir::String, scratch
         tests = [upperTest, middleTest, lowerTest]
 
         for l in 1:3 # upper, middle, lower
-            ave_properties[i,l,1] = nanmean(aveRho[tests[l]])
-            ave_properties[i,l,2] = nanmean(aveVp[tests[l]])
-            ave_properties[i,l,3] = nanmean(aveVpVs[tests[l]])
-            props_of_ave[i,l,1] = nanmean(seismicOfAve["rho,kg/m3"][tests[l]])
-            props_of_ave[i,l,2] = nanmean(seismicOfAve["vp,km/s"][tests[l]])
-            props_of_ave[i,l,3] = nanmean(seismicOfAve["vp/vs"][tests[l]])
+            ave_properties[l,1,i] = nanmean(aveRho[tests[l]])
+            ave_properties[l,2,i] = nanmean(aveVp[tests[l]])
+            ave_properties[l,3,i] = nanmean(aveVpVs[tests[l]])
+            props_of_ave[l,1,i] = nanmean(seismicOfAve["rho,kg/m3"][tests[l]])
+            props_of_ave[l,2,i] = nanmean(seismicOfAve["vp,km/s"][tests[l]])
+            props_of_ave[l,3,i] = nanmean(seismicOfAve["vp/vs"][tests[l]])
         end
     end
 
     return (props_of_ave, ave_properties, indices)
 end
+
+
+if rank != 0 # I'm not boss; run perplex then send my results to 0.
+    # send
+    # How many samples should I run?
+    comm = MPI.COMM_WORLD
+    r = ceil(Int, r_requested/nworkers)
+
+    # data: average seismic properties, seismic properties of average, indices
+    # for each of r runs, store upper, middle, lower; rho, vp, vpvs
+    # dimensions: run, layer, property
+    ave_properties = Array{Float64,3}(undef,(3,3,r))
+    props_of_ave = Array{Float64,3}(undef,(3,3,r))
+    indices = Array{Int,2}(undef,(n,r)) # store n indices for each of r runs, for reconstruction!
+
+    # run samples
+    runSamples!(props_of_ave, ave_properties, indices,
+                r, n, 
+                parsed_args["ign"], parsed_args["perplex"], parsed_args["scratch"])
+
+    # Send my data
+    sreq1 = MPI.Isend(ave_properties, 0, rank, comm)
+    sreq2 = MPI.Isend(props_of_ave, 0, rank+1000, comm)
+    sreq3 = MPI.Isend(indices, 0, rank+2000, comm)
+    stats = MPI.Waitall!([sreq1, sreq2, sreq3])
+end
+
+if rank == 0 # I'm the boss, wait for results
+    rworker = ceil(Int, r_requested/nworkers) # runs per worker
+    r = nworkers * rworker # total runs
+
+    ave_properties = Array{Float64,3}(undef,(3,3,r))
+    props_of_ave = Array{Float64,3}(undef,(3,3,r))
+    indices = Array{Int,2}(undef,(n,r)) # store n indices for each of r runs, for reconstruction!
+
+    # build recieve requests
+    reqs = Vector{MPI.Request}()
+    println("rworker = $(rworker)")
+    println("r = $(r)")
+    for w in 1:nworkers # worker ranks start at 1
+        println("w = $w")
+        start = (w-1)*rworker+1
+        println("start = $(start)")
+        rreq1 = MPI.Irecv!(view(ave_properties, :, :, start:start+rworker-1), w,  w, comm)
+        rreq2 = MPI.Irecv!(view(props_of_ave, :, :, start:start+rworker-1), w,  w+1000, comm)
+        rreq3 = MPI.Irecv!(view(indices, :, start:start+rworker-1), w,  w+2000, comm)
+        push!(reqs, rreq1)
+        push!(reqs, rreq2)
+        push!(reqs, rreq3)
+    end
+
+    # Wait patiently
+    MPI.Waitall!(reqs)
+
+    # Save data and plots
+    # Plot diffs
+    diffs = props_of_ave-ave_properties
+    layers = ["upper","middle","lower"]
+    props = ["rho","vp","vpvs"]
+    for l in 1:3
+        for p in 1:3
+           h = histogram(diffs[l,p,:], legend=false, xlabel="$(props[p]) difference")
+           savefig(h, "output/average/diff_hist_$(props[p])_$(layers[l])_n$(n)_r$(r).pdf")
+        end
+    end
+
+    # println(ave_properties)
+    # println(props_of_ave)
+    save("data/commutativity-n$(n)-r$(r).jld","ave_properties", ave_properties, "props_of_ave", props_of_ave, "indices", indices)
+
+end
+
+
