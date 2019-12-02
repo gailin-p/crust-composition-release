@@ -5,6 +5,10 @@ using StatGeochem
 using Statistics
 using DelimitedFiles
 using Random
+using JLD
+
+# Assumes Crust1.0 data as produced by loadAndSaveCrust1():
+dataPath = "data/crust1Layers.jld"
 
 # Average geotherm and layer depths
 # General options
@@ -32,8 +36,24 @@ depth = Dict{String,Array{Float64,1}}(("Upper"=>[]),("Middle"=>[]),("Lower")=>[]
 export thick
 export depth
 
-## Get thickness and depths
+"""
+Load and save doesn't work on discovery
+"""
 function __init__()
+    if isfile(dataPath)
+        d = load(dataPath)
+        global thick = d["thick"]
+        global depth = d["depth"]
+    else
+        loadAndSaveCrust1()
+    end
+end
+
+"""Get thickness and depths
+This doesn't work on Discovery (requires ImageCore, ImageMagick, which are broken)
+So save to a file, then use __init__() to read that file.
+"""
+function loadAndSaveCrust1()
     longs = Array{Float64,1}()
     lats = Array{Float64,1}()
     for lat in lat_range
@@ -43,7 +63,7 @@ function __init__()
         end
     end
 
-    # # Check continent
+    ## Check continent
     cont = map(c -> continents[c], find_geolcont(lats,longs))
     test = cont .== "NA"
 
@@ -56,6 +76,8 @@ function __init__()
         d[test] .= NaN
         depth[layer[1]] = map(x->-1*x, filter(x->!isnan(x),d))
     end
+
+    save(dataPath,"thick",thick,"depth",depth)
 end
 
 """
