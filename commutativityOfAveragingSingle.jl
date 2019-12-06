@@ -1,6 +1,7 @@
 ### Single threaded version of commutativityOfAveragingMPI
 
 using ArgParse
+using StatGeochem
 using Plots; gr();
 using JLD
 
@@ -28,6 +29,10 @@ s = ArgParseSettings()
         help = "How many sample pairs to run"
         arg_type = Int
         default = 30
+    "--figs"
+        help = "Save figures?"
+        arg_type = Bool
+        default = false
 end
 parsed_args = parse_args(ARGS, s)
 r_requested = parsed_args["n_runs"]
@@ -45,14 +50,19 @@ commutativityOfAverage.runSamples!(props_of_ave, ave_properties, indices,
 
 # Save data and plots
 # Plot diffs
-diffs = props_of_ave-ave_properties
-layers = ["upper","middle","lower"]
-props = ["rho","vp","vpvs"]
-for l in 1:3
-    for p in 1:3
-       h = histogram(diffs[l,p,:], legend=false, xlabel="$(props[p]) difference")
-       savefig(h, "output/average/diff_hist_$(props[p])_$(layers[l])_n$(n)_r$(r).pdf")
+if parsed_args["figs"]
+    diffs = props_of_ave-ave_properties
+    layers = ["upper","middle","lower"]
+    props = ["rho","vp","vpvs"]
+    for l in 1:3
+        for p in 1:3
+           h = histogram(diffs[l,p,:], legend=false, xlabel="$(props[p]) difference")
+           savefig(h, "output/junk/diff_hist_$(props[p])_$(layers[l])_n$(n)_r$(r).pdf")
+        end
     end
+else
+    diffs = props_of_ave-ave_properties
+    println("Average diff $(nanmean(diffs))")
 end
 
 save("data/commutativity-n$(n)-r$(r).jld","ave_properties", ave_properties, "props_of_ave", props_of_ave, "indices", indices)

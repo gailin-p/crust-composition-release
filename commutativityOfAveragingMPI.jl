@@ -30,7 +30,7 @@ s = ArgParseSettings()
     "--ign", "-i"
         help = "Path to ignmajors file"
         arg_type = String
-        default = "../ignmajors.csv"
+        default = "ignmajors.csv"
     "--n_samples", "-n"
         help = "Number of samples to average"
         arg_type = Int
@@ -84,12 +84,8 @@ if rank == 0 # I'm the boss, wait for results
 
     # build recieve requests
     reqs = Vector{MPI.Request}()
-    println("rworker = $(rworker)")
-    println("r = $(r)")
     for w in 1:nworkers # worker ranks start at 1
-        println("w = $w")
         start = (w-1)*rworker+1
-        println("start = $(start)")
         rreq1 = MPI.Irecv!(view(ave_properties, :, :, start:start+rworker-1), w,  w, comm)
         rreq2 = MPI.Irecv!(view(props_of_ave, :, :, start:start+rworker-1), w,  w+1000, comm)
         rreq3 = MPI.Irecv!(view(indices, :, start:start+rworker-1), w,  w+2000, comm)

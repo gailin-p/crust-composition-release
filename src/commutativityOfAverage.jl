@@ -31,9 +31,7 @@ long_range = -180:179
 nlat = length(lat_range)
 nlong = length(long_range)
 layers = Dict{String,Int}(("Upper"=>6),("Middle"=>7),("Lower"=>8)) # Crust1.0 layers
-thick = Dict{String,Array{Float64,1}}(("Upper"=>[]),("Middle"=>[]),("Lower")=>[])
-depth = Dict{String,Array{Float64,1}}(("Upper"=>[]),("Middle"=>[]),("Lower")=>[])
-export thick
+depth = Array{Float64, 2} # n rows, 4 columns (upper, middle, lower, geotherm)
 export depth
 
 """
@@ -42,7 +40,6 @@ Load and save doesn't work on discovery
 function __init__()
     if isfile(dataPath)
         d = load(dataPath)
-        global thick = d["thick"]
         global depth = d["depth"]
     else
         loadAndSaveCrust1()
@@ -66,18 +63,20 @@ function loadAndSaveCrust1()
     ## Check continent
     cont = map(c -> continents[c], find_geolcont(lats,longs))
     test = cont .== "NA"
+    depthTest = [] # for filtering isotherm by depth NaNs
 
     # Get depths.
-    for layer in layers # layer is (name, crust1.0 index)
-        t = find_crust1_thickness(lats, longs, layer[2])
-        t[test] .= NaN
-        thick[layer[1]] = map(x->-1*x, filter(x->!isnan(x),t))
-        d = find_crust1_base(lats, longs, layer[2])
-        d[test] .= NaN
-        depth[layer[1]] = map(x->-1*x, filter(x->!isnan(x),d))
+    global depth = find_tc1_crust(lats, longs)
+    for layer in [6,7,8] # upper, middle, lower
+        d = [-1*n for n in find_crust1_base(lats, longs, layer)]
+        depth = hcat(depth,d)
     end
 
-    save(dataPath,"thick",thick,"depth",depth)
+    # Filter for only locations where all depths and geotherm are non-null
+    test = [!isnan(x) for x in sum(depth,dims=2)]
+    depth = depth[test[:],:]
+
+    save(dataPath,"depth",depth)
 end
 
 """
@@ -87,8 +86,8 @@ Return depths
     (upper,middle,lower)
 """
 function getCrustParams()
-    i = ceil(Int,length(depth["Lower"])*rand())
-    return depth["Upper"][i], depth["Middle"][i], depth["Lower"][i]
+    i = ceil(Int,size(depth)[1]*rand())
+    return depth[i,:] # geotherm, base of upper, middle, lower
 end
 
 """
@@ -97,7 +96,7 @@ Convert values in a < lower or > upper to NaN
 """
 function badValToNan!(a::Array{Float64,1}; lower::Float64=1e-6, upper::Float64=1e6)
     # Ignore very small and very large values (we'll use nanmean)
-    badval = map(s-> (s > 1e6 || s < 1e-6),a)
+    badval = map(s-> (s > upper || s < lower),a)
     if (sum(badval)) > 0
         println("$(sum(badval)) bad values")
     end
@@ -120,9 +119,10 @@ function runSamples!(props_of_ave::Array{Float64,3}, ave_properties::Array{Float
     # run r sample pairs through perplex
     @showprogress 1 "Running samples... " for i in 1:r
         # For each sample pair, go get a new crust depth_hist
-        (upperBase, middleBase, lowerBase) = getCrustParams()
-        geotherm = 550.0/lowerBase/dpdz
-        P_range = [1, ceil(Int,lowerBase*dpdz)] # only run perplex to bottom of crust for this geotherm
+        (tc1, upperBase, middleBase, lowerBase) = getCrustParams()
+        print("$tc1, $upperBase, $middleBase, $lowerBase")
+        geotherm = 550.0/tc1/dpdz
+        P_range = [1, ceil(Int,lowerBase*dpdz)] # run to base of crust. TODO should we only run perplex to 550 degree isotherm?
 
         allComp = Array{Float64,2}(undef,(n,10))
         allSeismic = Array{Any,1}(undef,n)
@@ -171,7 +171,7 @@ function runSamples!(props_of_ave::Array{Float64,3}, ave_properties::Array{Float
         seismicOfAve = perplex_query_seismic(perplex, scratch, index=myindex)
         # Ignore very small and very large values
         badValToNan!(seismicOfAve["rho,kg/m3"])
-        badValToNan!(seismicOfAve["vp,km/s"])
+        badValToNan!(seismicOfAve["vp,km/s"],lower=4.0) # See if this clears up the bimodality
         badValToNan!(seismicOfAve["vp/vs"])
 
         # Average seismic properties over depth layer
