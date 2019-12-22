@@ -1,3 +1,7 @@
+"""
+    commutativityOfAverage
+Functions for selecting random batches of samples and running perplex on them.
+"""
 module commutativityOfAverage
 
 using ProgressMeter
@@ -83,7 +87,7 @@ end
     getCrustParams()
 Provide random layer depths drawn from distributions.
 Return depths
-    (upper,middle,lower)
+    (550 isotherm, upper,middle,lower)
 """
 function getCrustParams()
     i = ceil(Int,size(depth)[1]*rand())
@@ -104,11 +108,28 @@ function badValToNan!(a::Array{Float64,1}; lower::Float64=1e-6, upper::Float64=1
     return a
 end
 
+# TODO: This is the same as massMean, is that correct?
+function seismicMean(nums)
+    oneover = [1/n for n in nums]
+    return 1/nanmean(oneover)
+end
+export seismicMean
+
+function massMean(nums)
+    # n = length(densities)
+    # volumes = [(1/d)*(1/n) for d in densities]
+    # return 1/sum(volumes)
+    oneover = [1/n for n in nums]
+    return 1/nanmean(oneover)
+end
+export massMean
+
 """
     runSamples!()
 Run r samples
 Return (ave properties, properties of averages, indices)
 properties arrays are 3x3xr, layer x property x run
+TODO refactor to return new instead of modify result arrays
 """
 function runSamples!(props_of_ave::Array{Float64,3}, ave_properties::Array{Float64,3}, indices::Array{Int64,2},
     r::Int, n::Int, ignFile::String, perplex::String, scratch::String)
@@ -120,7 +141,6 @@ function runSamples!(props_of_ave::Array{Float64,3}, ave_properties::Array{Float
     @showprogress 1 "Running samples... " for i in 1:r
         # For each sample pair, go get a new crust depth_hist
         (tc1, upperBase, middleBase, lowerBase) = getCrustParams()
-        print("$tc1, $upperBase, $middleBase, $lowerBase")
         geotherm = 550.0/tc1/dpdz
         P_range = [1, ceil(Int,lowerBase*dpdz)] # run to base of crust. TODO should we only run perplex to 550 degree isotherm?
 
@@ -142,7 +162,7 @@ function runSamples!(props_of_ave::Array{Float64,3}, ave_properties::Array{Float
             seismic = perplex_query_seismic(perplex, scratch, index=myindex)
             # Ignore very small and very large values
             badValToNan!(seismic["rho,kg/m3"])
-            badValToNan!(seismic["vp,km/s"])
+            badValToNan!(seismic["vp,km/s"],lower=4.0)
             badValToNan!(seismic["vp/vs"])
             allSeismic[j]=seismic
         end
@@ -154,9 +174,9 @@ function runSamples!(props_of_ave::Array{Float64,3}, ave_properties::Array{Float
         aveRho = Array{Float64, 1}(undef, length(allSeismic[1]["P(bar)"]))
 
         for p_index in 1:length(allSeismic[1]["P(bar)"])
-            aveVp[p_index] = nanmean(map(y -> (allSeismic[y]["vp,km/s"][p_index]), 1:length(allSeismic)))
-            aveVpVs[p_index] = nanmean(map(y -> (allSeismic[y]["vp/vs"][p_index]), 1:length(allSeismic)))
-            aveRho[p_index] = nanmean(map(y -> (allSeismic[y]["rho,kg/m3"][p_index]), 1:length(allSeismic)))
+            aveVp[p_index] = seismicMean(map(y -> (allSeismic[y]["vp,km/s"][p_index]), 1:length(allSeismic)))
+            aveVpVs[p_index] = seismicMean(map(y -> (allSeismic[y]["vp/vs"][p_index]), 1:length(allSeismic)))
+            aveRho[p_index] = massMean(map(y -> (allSeismic[y]["rho,kg/m3"][p_index]), 1:length(allSeismic)))
         end
 
         # Run perplex on average composition
