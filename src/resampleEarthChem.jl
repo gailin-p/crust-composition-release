@@ -18,22 +18,28 @@ using StatGeochem
 using MAT
 using DelimitedFiles
 using Logging
+using Statistics
 using ProgressMeter: @showprogress
 
 s = ArgParseSettings()
 @add_arg_table s begin
-    "--data", "-d"
-        help = "Path to EarthChem mat file"
-        arg_type = String
-        default = "igncn1.mat"
     "--data_prefix", "-o"
         help = "Folder for output data files"
         arg_type= String
         required = true
+    "--data", "-d"
+        help = "Path to EarthChem mat file"
+        arg_type = String
+        default = "igncn1.mat"
     "--num_samples", "-n"
         help = "How many samples to produce"
         arg_type = Int
         default = 100000
+    "--weight", "-w"
+        help = "Weight according to silica content? Allowed: silica"
+        arg_type = String
+        range_tester = x -> (x in ["","silica"])
+        default = ""
 end
 parsed_args = parse_args(ARGS, s)
 
@@ -41,52 +47,57 @@ parsed_args = parse_args(ARGS, s)
 ign = matread(parsed_args["data"])
 ign["elements"] = string.(ign["elements"]) # Since .mat apparently can"t tell the difference between "B" and "b"
 
-# List of elements we want to export (primarily out element oxides)
-elements = ["index","SiO2","TiO2","Al2O3","FeO","MgO","CaO","Na2O","K2O","H2O_Total","CO2","tc1Crust"]
+# List of elements we want to export (primarily element oxides)
+elements = ["SiO2","TiO2","Al2O3","FeO","MgO","CaO","Na2O","K2O","H2O_Total","CO2","tc1Crust"]
 
-# Use default 2-sigma relative uncertainties from err2srel
+# Set uncertainties
 for e in elements
-    ign["err"][e] = ign[e] .* (ign["err2srel"][e] / 2)
-end
-# Use larger uncertainty for missing H2O and CO2
-for e in ["H2O_Total", "CO2"]
-    ign["err"][e][isnan.(ign[e])] .= nanstd(ign[e])
+    ign["err"][e] = ign[e] .* (ign["err2srel"][e] / 2) # default
+    ign["err"][e][isnan.(ign[e])] .= nanstd(ign[e]) # missing data gets std TODO is this ok?
 end
 
 # Clean up data before resampling
 # Start with all Fe as FeO TODO before or after resample? TODO what error to use for binned FeO?
 ign["FeO"] = feoconversion.(ign["FeO"], ign["Fe2O3"], ign["FeOT"], ign["Fe2O3T"])
 
-# Set undefined H2O and CO2 to average. TODO is this right?
-ign["H2O_Total"][isnan.(ign["H2O_Total"])] .= nanmean(ign["H2O_Total"])
-ign["CO2"][isnan.(ign["CO2"])] .= nanmean(ign["CO2"])
+# Set undefined elements to average. TODO is this right?
+for e in elements
+    ign[e][isnan.(ign[e])] .= nanmean(ign[e])
+end
 
 
 # Resample
-# TODO should I resample weighting for uniform SiO2? 
-resampled = bsresample(ign, parsed_args["num_samples"], elements)
+# TODO should I resample weighting for uniform SiO2?
+if (parsed_args["weight"] == "silica") # weight according to silica content
+    k = invweight(ign["SiO2"], (nanmaximum(ign["SiO2"])-nanminimum(ign["SiO2"]))/100)
 
+    # Probability of keeping a given data point when sampling:
+    # We want to select roughly one-fith of the full dataset in each re-sample,
+    # which means an average resampling probability <p> of about 0.2
+    p = 1.0 ./ ((k .* median(5.0 ./ k)) .+ 1.0)
+    resampled = bsresample(ign, parsed_args["num_samples"], elements, p)
+else
+    resampled = bsresample(ign, parsed_args["num_samples"], elements)
+end
 
 # Write ignmajors
 
 # Create 2d array of out element data to export
-outtable = Array{Float64,2}(undef, length(resampled["SiO2"]), length(elements))
+outtable = Array{Float64,2}(undef, length(resampled["SiO2"]), length(elements)+1)
 for i = 1:length(elements)
-    outtable[:,i] = resampled[elements[i]]
+    outtable[:,i+1] = resampled[elements[i]]
 end
-
-# Reject samples with missing data # TODO shouldn't be any now I think...
-t = .~ any(isnan.(outtable), dims=2)
+outtable[:,1] = Array(1:length(resampled["SiO2"]))
 
 # Reject samples with suspicious anhydrous normalizations
 anhydrousnorm = sum(outtable[:,2:9], dims=2)
-t = t .& (anhydrousnorm .< 101) .& (anhydrousnorm .> 90)
+t = (anhydrousnorm .< 101) .& (anhydrousnorm .> 90)
 
-println("Discarded $(size(outtable,1) - size(t,1))")
+println("Discarded $(size(outtable,1) - sum(t)) because of suspicious anhydrous normalizations")
 
 # Write accepted samples to file
 dir = parsed_args["data_prefix"]
 mkpath("data/"*dir) # make if does not exist
 
-path = "data/"*dir*"bsr_ignmajors.csv"
+path = "data/"*dir*"/bsr_ignmajors.csv"
 writedlm(path, round.(outtable[t[:],:], digits=5), ",")
