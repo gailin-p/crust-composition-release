@@ -85,11 +85,16 @@ end
 # Create 2d array of out element data to export
 outtable = Array{Float64,2}(undef, length(resampled["SiO2"]), length(elements)+1)
 for i = 1:length(elements)
+
     outtable[:,i+1] = resampled[elements[i]]
 end
 outtable[:,1] = Array(1:length(resampled["SiO2"]))
 
+# Fix any resampled below 0
+outtable[outtable .<= 0] .= 0
+
 # Reject samples with suspicious anhydrous normalizations
+# TODO should I do this for resampled samples?
 anhydrousnorm = sum(outtable[:,2:9], dims=2)
 t = (anhydrousnorm .< 101) .& (anhydrousnorm .> 90)
 
