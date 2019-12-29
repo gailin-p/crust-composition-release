@@ -71,7 +71,7 @@ int main(int argc, char **argv){
 		MPI_Request reqs[world_size-1];
 		MPI_Status stats[world_size-1];
 		double* results = malloc(100000 * sizeof(double));
-		double stop[12] = {-1};
+		double stop[15] = {-1};
 
 		// Open output file
 //		fp=fopen("PerplexResults.csv","w");
@@ -79,7 +79,7 @@ int main(int argc, char **argv){
 		fprintf(stdout,"index\tP(bar)\tT(K)\trho\tVp\tVp/Vs\n");
 
 		// Import 2-d source data array as a flat double array. Format:
-		// #, SiO2, TiO2, Al2O3, FeO, MgO, CaO, Na2O, K2O, H2O, CO2, tc1Crust
+		// #, SiO2, TiO2, Al2O3, FeO, MgO, CaO, Na2O, K2O, H2O, CO2, tc1Crust, upper Crust1.0, middle, lower
 		double** const data = csvparse(argv[1],',', &datarows, &datacolumns);
 
 		// Listen for task requests from the worker nodes
@@ -106,7 +106,7 @@ int main(int argc, char **argv){
 
 			//       *buf, count, datatype, dest, tag, comm
 //			printf("0: Send data: Rank: %i\n", nextReady+1);
-			MPI_Send(data[i], 12, MPI_DOUBLE, nextReady+1, 1, MPI_COMM_WORLD); // Send next problem to work on
+			MPI_Send(data[i], 15, MPI_DOUBLE, nextReady+1, 1, MPI_COMM_WORLD); // Send next problem to work on
 			//        *buf, count, datatype, source, tag, comm, *request
 			MPI_Irecv(&buf[nextReady], 1, MPI_INT, nextReady+1, 0, MPI_COMM_WORLD, &reqs[nextReady]); // Keep waiting
 		}
@@ -130,7 +130,7 @@ int main(int argc, char **argv){
 
 			// Send stop signal
 //			printf("0: Stop: Rank: %i\n", nextReady+1);
-			MPI_Send(&stop, 12, MPI_DOUBLE, nextReady+1, 1, MPI_COMM_WORLD);
+			MPI_Send(&stop, 15, MPI_DOUBLE, nextReady+1, 1, MPI_COMM_WORLD);
 		}
 
 
@@ -141,7 +141,7 @@ int main(int argc, char **argv){
 		// Declare variables used only on the worker nodes
 		MPI_Request sReq;
 		MPI_Status sStat;
-		double ic[12], *results;
+		double ic[15], *results;
 		char* prefix = malloc(500*sizeof(char));
 		char* cmd_string = malloc(1000*sizeof(char));
 		char* path_string = malloc(500*sizeof(char));
@@ -189,7 +189,7 @@ int main(int argc, char **argv){
 
 			// Get next task from root node
 			//       *buf, count, datatype, source, tag, comm, *status
-			MPI_Recv(&ic, 12, MPI_DOUBLE, ROOT, 1, MPI_COMM_WORLD, &sStat);
+			MPI_Recv(&ic, 15, MPI_DOUBLE, ROOT, 1, MPI_COMM_WORLD, &sStat);
 
 			// If composition is unreadable, move on to next simulation
 			if (isnan(ic[0])){
@@ -243,7 +243,7 @@ int main(int argc, char **argv){
 				fprintf(fp,"%g ",ic[i]);
 			}
 			//Solution model
-			fprintf(fp,"\nn\nn\ny\nsolution_model.dat\nO(HP)\nOpx(HP)\nOmph(GHP)\nGt(HP)\noAmph(DP)\nGlTrTsPg\nT\nAnth\nChl(HP)\nBio(TCC)\nMica(CF)\nCtd(HP)\nIlHm(A)\nSp(HP)\nSapp(HP)\nSt(HP)\nfeldspar\nDo(HP)\n\nClosed System");	
+			fprintf(fp,"\nn\nn\ny\nsolution_model.dat\nO(HP)\nOpx(HP)\nOmph(GHP)\nGt(HP)\noAmph(DP)\nGlTrTsPg\nT\nAnth\nChl(HP)\nBio(TCC)\nMica(CF)\nCtd(HP)\nIlHm(A)\nSp(HP)\nSapp(HP)\nSt(HP)\nfeldspar\nDo(HP)\n\nClosed System");
 			fclose(fp);
 
 			// build PerpleX problem definition

@@ -1,5 +1,8 @@
 """
 Resample earthchem data set (original in igncn1.mat) to a perplex-ready ignmajors.csv
+After resampling, apply a random geotherm/crust layer combination to each sample
+TODO: also resample geotherm/crust values, but separately
+      (they should not be connected to a specific composition)
 
 Advantages of this over using perplex directly on EarthChem samples:
 - most EarthChem samples are missing H2O data
@@ -20,6 +23,7 @@ using DelimitedFiles
 using Logging
 using Statistics
 using ProgressMeter: @showprogress
+include("crustDistribution.jl")
 
 s = ArgParseSettings()
 @add_arg_table s begin
@@ -83,12 +87,14 @@ end
 # Write ignmajors
 
 # Create 2d array of out element data to export
-outtable = Array{Float64,2}(undef, length(resampled["SiO2"]), length(elements)+1)
+outtable = Array{Float64,2}(undef, length(resampled["SiO2"]), length(elements)+5)
 for i = 1:length(elements)
-
     outtable[:,i+1] = resampled[elements[i]]
 end
-outtable[:,1] = Array(1:length(resampled["SiO2"]))
+outtable[:,1] = Array(1:length(resampled["SiO2"])) # index
+@showprogress "Randomly applying geotherms: " for j = 1:size(outtable,1)
+    outtable[j,length(elements)+2:end] = crustDistribution.getCrustParams()
+end
 
 # Fix any resampled below 0
 outtable[outtable .<= 0] .= 0
