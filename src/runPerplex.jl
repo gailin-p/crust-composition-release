@@ -3,6 +3,8 @@ MPI.Init()
 
 using ArgParse
 using DelimitedFiles
+using StatGeochem
+using HDF5
 
 s = ArgParseSettings()
 @add_arg_table s begin
@@ -10,8 +12,18 @@ s = ArgParseSettings()
         help = "Folder for output data files"
         arg_type= String
         required = true
+    "--scratch"
+        help = "Path to scratch directory"
+        arg_type = String
+        default = "/scratch/gailin/" # local scratch
+    "--perplex", "-p"
+        help = "Path to PerpleX directory (data files and utilities)"
+        arg_type = String
+        required = true
 end 
 parsed_args = parse_args(ARGS, s)
+perplex = parsed_args["perplex"]
+scratch = parsed_args["scratch"]
 
 # MPI setup 
 comm = MPI.COMM_WORLD
@@ -19,8 +31,21 @@ rank = MPI.Comm_rank(comm)
 n_workers = MPI.Comm_size(comm)-1
 
 # Global constants 
-n = 3 # number of samples to send to each worker at once
+n = 20 # number of samples to send to each worker at once
 sample_size = 16 # number of columns in ign per sample 
+
+# General perplex options 
+exclude = ""
+dataset = "hpha02ver.dat"
+elts = ["SIO2", "TIO2", "AL2O3", "FEO", "MGO", "CAO", "NA2O", "K2O", "H2O", "CO2"]
+dpdz = 2900. * 9.8 / 1E5 * 1E3
+# For now, use fluid and throw away results with NaN or 0 seismic properties. 
+solutions = "O(HP)\nOpx(HP)\nOmph(GHP)\nGt(HP)\noAmph(DP)\nGlTrTsPg\nT\nB\nAnth\nChl(HP)\nBio(TCC)\nMica(CF)\nCtd(HP)\nIlHm(A)\nSp(HP)\nSapp(HP)\nSt(HP)\nfeldspar\nDo(HP)\nF\n"
+npoints = 20
+
+# Perplex labels used by StatGeochem perplex interface 
+prop_labels = ["rho,kg/m3","vp,km/s","vp/vs"]
+p_label = "P(bar)"
 
 
 function worker() 
@@ -40,8 +65,60 @@ function worker()
 			break 
 		end
 
-		# Run perplex  TODO 
-		results .= requested[1,1] # just for testing
+		# Run perplex  
+		for i in 1:n 
+			index = requested[i,1]
+			comp = requested[i,2:12]
+			tc1 = requested[i,13]
+			layers = requested[i,14:end]
+			if index == -1 # out of real samples 
+				break
+			end
+
+			# Sample-specific perplex options 
+			geotherm = 550.0/tc1/dpdz
+        	P_range = [1, ceil(Int,layers[3]*dpdz)] # run to base of crust. 
+
+        	# Run perplex
+        	perplex_configure_geotherm(perplex, scratch, comp, elements=elts,
+                P_range=P_range, geotherm=geotherm, dataset=dataset, solution_phases=solutions,
+                excludes="", index=rank, npoints=npoints)
+            seismic = perplex_query_seismic(perplex, scratch, index=rank)
+
+            # discard below first NaN or 0 value in any property 
+            # find first NaN or 0 value across props
+            bad = Inf 
+			for prop_i in 1:length(prop_labels) 
+            	prop = prop_labels[prop_i]
+   				this_bad = findfirst(x->(isnan(x) | (x < 1e-6)), seismic[prop])
+   				if !isnothing(this_bad)
+   					bad = Int(min(this_bad, bad))
+   				end
+   			end
+   			# Remove all values after first bad value 
+   			if bad <= length(seismic[p_label]) # some values to be handled 
+   				for prop in prop_labels # find first NaN or 0 value across props
+					seismic[prop][bad:end] .= NaN 
+				end
+			end
+
+            # Find per-layer mean for each property 
+            p_layers = [l*dpdz for l in layers] # convert depths to pressures 
+            pressure = seismic[p_label]
+            upper = pressure .<= p_layers[1]
+            middle = (pressure .> p_layers[1]) .& (pressure .<= p_layers[2])
+            lower = (pressure .> p_layers[2]) .& (pressure .<= p_layers[3])
+            for prop_i in 1:length(prop_labels)
+            	prop = prop_labels[prop_i]
+            	results[prop_i+1,1,i] = nanmean(seismic[prop][upper])
+            	results[prop_i+1,2,i] = nanmean(seismic[prop][middle])
+            	results[prop_i+1,3,i] = nanmean(seismic[prop][lower])
+            end
+
+            # Set index in results 
+            results[1,:,i] .= index
+
+        end
 	end
 end 
 
@@ -54,7 +131,6 @@ function head()
 	println("head")
 	# Load data used by head 
 	ign = readdlm("data/"*parsed_args["data_prefix"]*"/bsr_ignmajors.csv", ',')
-	ign = ign[1:20,:] # TODO just for testing
 	n_samples = size(ign,1)
 	output = fill(-1.0,(4,3,n_samples+n)) # Collect data. extra space for last worker run
 
@@ -95,7 +171,8 @@ function head()
 	MPI.Waitall!(kills)
 
 	# Save output 
-	print(output) # TODO temp 
+	output = output[:,:,1:n_samples] # discard any trailing -1 
+	h5write("data/"*parsed_args["data_prefix"]*"/perplex_out.h5", "results", output)
 end 
 
 
