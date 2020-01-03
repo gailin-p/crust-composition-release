@@ -14,6 +14,8 @@ Advantages of this over using perplex directly on EarthChem samples:
 Use:
 Run from base folder (runPerplexBatchVp)
 Places resampled file at data/<data_prefix>/ignmajors.csv
+
+Run using MPI like:
 """
 
 using ArgParse
@@ -91,7 +93,7 @@ outtable = Array{Float64,2}(undef, length(resampled["SiO2"]), length(elements)+5
 for i = 1:length(elements)
     outtable[:,i+1] = resampled[elements[i]]
 end
-outtable[:,1] = Array(1:length(resampled["SiO2"])) # index
+
 @showprogress "Randomly applying geotherms: " for j = 1:size(outtable,1)
     outtable[j,length(elements)+2:end] = crustDistribution.getCrustParams()
 end
@@ -103,12 +105,15 @@ outtable[outtable .<= 0] .= 0
 # TODO should I do this for resampled samples?
 anhydrousnorm = sum(outtable[:,2:9], dims=2)
 t = (anhydrousnorm .< 101) .& (anhydrousnorm .> 90)
+outtable = outtable[t[:],:]
 
-println("Discarded $(size(outtable,1) - sum(t)) because of suspicious anhydrous normalizations")
+println("Discarded $(length(resampled["SiO2"]) - sum(t)) because of suspicious anhydrous normalizations")
+
+outtable[:,1] = Array(1:size(outtable,1)) # Set indices
 
 # Write accepted samples to file
 dir = parsed_args["data_prefix"]
 mkpath("data/"*dir) # make if does not exist
 
 path = "data/"*dir*"/bsr_ignmajors.csv"
-writedlm(path, round.(outtable[t[:],:], digits=5), ",")
+writedlm(path, round.(outtable, digits=5), ",")
