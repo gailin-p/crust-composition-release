@@ -10,7 +10,7 @@ using StatGeochem
 using ProgressMeter: @showprogress
 using ArgParse
 
-include("InversionModel.jl")
+include("inversionModel.jl")
 include("crustDistribution.jl")
 
 s = ArgParseSettings()
@@ -38,37 +38,23 @@ elements = ["SiO2","TiO2","Al2O3","FeO","MgO","CaO","Na2O","K2O","H2O_Total","CO
 # Build models. use SiO2. 
 max_i = min(size(ign,1), size(perplexresults,3))
 upper = InversionModel(ign[1:max_i,1:2], Array(perplexresults[:,1,1:max_i]'))
+middle = InversionModel(ign[1:max_i,1:2], Array(perplexresults[:,2,1:max_i]'))
+lower = InversionModel(ign[1:max_i,1:2], Array(perplexresults[:,3,1:max_i]'))
 
-print(upper)
 
-# Get seismic data to invert 
-
+# Get seismic data and invert 
+# Upper 
 weight, rho, vp, vpvs = crustDistribution.getAllSeismic(6)
-println(nanmean(rho))
 
 (means, errors) = estimateComposition(upper, rho, vp, vpvs)
 
-println("Upper $(nanmean(means))")
-
 # Middle 
-# Build models. use SiO2. 
-middle = InversionModel(ign[1:max_i,1:2], Array(perplexresults[:,2,1:max_i]'))
-
-# Get seismic data to invert 
 weight, rho, vp, vpvs = crustDistribution.getAllSeismic(7)
-println(nanmean(rho))
-
 (means, errors) = estimateComposition(middle, rho, vp, vpvs)
 println("Middle $(nanmean(means))")
 
-# Lower 
-# Build models. use SiO2. 
-lower = InversionModel(ign[1:max_i,1:2], Array(perplexresults[:,3,1:max_i]'))
-
-# Get seismic data to invert 
+# Lower
 weight, rho, vp, vpvs = crustDistribution.getAllSeismic(8)
-println(nanmean(rho))
-
 (means, errors) = estimateComposition(middle, rho, vp, vpvs)
 println("Lower $(nanmean(means))")
 
