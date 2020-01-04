@@ -11,8 +11,7 @@ using DelimitedFiles
 using Random
 using JLD
 
-# Assumes Crust1.0 data as produced by loadAndSaveCrust1():
-dataPath = "data/crust1Layers.jld"
+include("crustDistribution.jl")
 
 # Average geotherm and layer depths
 # General options
@@ -30,69 +29,7 @@ npoints = 20
 
 ## Set up variables
 # Using Crust1.0 interface provided by StatGeochem, get all layer depths
-lat_range = -89:90
-long_range = -180:179
-nlat = length(lat_range)
-nlong = length(long_range)
 layers = Dict{String,Int}(("Upper"=>6),("Middle"=>7),("Lower"=>8)) # Crust1.0 layers
-depth = Array{Float64, 2} # n rows, 4 columns (upper, middle, lower, geotherm)
-export depth
-
-"""
-Load and save doesn't work on discovery
-"""
-function __init__()
-    if isfile(dataPath)
-        d = load(dataPath)
-        global depth = d["depth"]
-    else
-        loadAndSaveCrust1()
-    end
-end
-
-"""Get thickness and depths
-This doesn't work on Discovery (requires ImageCore, ImageMagick, which are broken)
-So save to a file, then use __init__() to read that file.
-"""
-function loadAndSaveCrust1()
-    longs = Array{Float64,1}()
-    lats = Array{Float64,1}()
-    for lat in lat_range
-        for long in long_range
-            push!(longs, long)
-            push!(lats, lat)
-        end
-    end
-
-    ## Check continent
-    cont = map(c -> continents[c], find_geolcont(lats,longs))
-    test = cont .== "NA"
-    depthTest = [] # for filtering isotherm by depth NaNs
-
-    # Get depths.
-    global depth = find_tc1_crust(lats, longs)
-    for layer in [6,7,8] # upper, middle, lower
-        d = [-1*n for n in find_crust1_base(lats, longs, layer)]
-        depth = hcat(depth,d)
-    end
-
-    # Filter for only locations where all depths and geotherm are non-null
-    test = [!isnan(x) for x in sum(depth,dims=2)]
-    depth = depth[test[:],:]
-
-    save(dataPath,"depth",depth)
-end
-
-"""
-    getCrustParams()
-Provide random layer depths drawn from distributions.
-Return depths
-    (550 isotherm, upper,middle,lower)
-"""
-function getCrustParams()
-    i = ceil(Int,size(depth)[1]*rand())
-    return depth[i,:] # geotherm, base of upper, middle, lower
-end
 
 """
     badValToNan!(a)
@@ -140,7 +77,7 @@ function runSamples!(props_of_ave::Array{Float64,3}, ave_properties::Array{Float
     # run r sample pairs through perplex
     @showprogress 1 "Running samples... " for i in 1:r
         # For each sample pair, go get a new crust depth_hist
-        (tc1, upperBase, middleBase, lowerBase) = getCrustParams()
+        (tc1, upperBase, middleBase, lowerBase) = crustDistribution.getCrustParams()
         geotherm = 550.0/tc1/dpdz
         P_range = [1, ceil(Int,lowerBase*dpdz)] # run to base of crust. TODO should we only run perplex to 550 degree isotherm?
 
@@ -162,7 +99,7 @@ function runSamples!(props_of_ave::Array{Float64,3}, ave_properties::Array{Float
             seismic = perplex_query_seismic(perplex, scratch, index=myindex)
             # Ignore very small and very large values
             badValToNan!(seismic["rho,kg/m3"])
-            badValToNan!(seismic["vp,km/s"],lower=4.0)
+            badValToNan!(seismic["vp,km/s"],lower=1.0)
             badValToNan!(seismic["vp/vs"])
             allSeismic[j]=seismic
         end
