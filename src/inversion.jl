@@ -47,6 +47,7 @@ lower = InversionModel(ign[1:max_i,1:2], Array(perplexresults[:,3,1:max_i]'))
 weight, rho, vp, vpvs = crustDistribution.getAllSeismic(6)
 
 (means, errors) = estimateComposition(upper, rho, vp, vpvs)
+println("Upper $(nanmean(means))")
 
 # Middle 
 weight, rho, vp, vpvs = crustDistribution.getAllSeismic(7)
