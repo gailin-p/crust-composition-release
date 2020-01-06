@@ -12,13 +12,23 @@ module crustDistribution
 using StatsBase
 using StatGeochem
 using JLD
+using MAT 
+using Statistics
 
+# For building querries 
 dataPath = "data/crust1Layers.jld"
 lat_range = -89:90
 long_range = -180:179
 nlat = length(lat_range)
 nlong = length(long_range)
 
+# For resampling 
+uncertainty_dat = matread("igncn1.mat")["err2srel"]
+relerr_rho = uncertainty_dat["Rho"]/2
+relerr_vp = uncertainty_dat["Vp"]/2
+relerr_vs = uncertainty_dat["Vs"]/2
+
+# Exports 
 depth = Array{Float64, 2} # n rows, 4 columns (upper, middle, lower, geotherm)
 export depth
 weights = Array{Float64, 1} # n rows, weight for choosing each row
@@ -115,6 +125,7 @@ export getCrustParams
 Return a touple of weights and lists of seismic values (weights, rho, vp, vp/vs)
 Weights are for differing sizes of lat/long squares 
   (different from global weights because different filter)
+Also resample. 
 """
 function getAllSeismic(layer::Int64)
     if !(layer in [6,7,8])
@@ -125,9 +136,22 @@ function getAllSeismic(layer::Int64)
 
     (vp, vs, rho) = find_crust1_seismic(lats, longs, layer)
 
-    these_weights = latLongWeight.(lats)
+    k = latLongWeight.(lats)
+    # Probability of keeping a given data point when sampling:
+    # We want to select roughly one-fith of the full dataset in each re-sample,
+    # which means an average resampling probability <p> of about 0.2
+    p = 1.0 ./ ((k .* median(5.0 ./ k)) .+ 1.0)
 
-    return (these_weights, rho, vp, vp ./ vs)
+    # Resample! 
+    samples = hcat(rho, vp, vs)
+    sigma = hcat(rho .* relerr_rho, vp .* relerr_vp, vs .* relerr_vs)
+    resampled = bsresample(samples, sigma, 50000, p)
+
+    rho = resampled[:,1]
+    vp = resampled[:,2]
+    vs = resampled[:,3]
+
+    return (rho, vp, vp ./ vs)
 end
 export getAllSeismic
 

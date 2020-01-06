@@ -42,20 +42,20 @@ middle = InversionModel(ign[1:max_i,1:2], Array(perplexresults[:,2,1:max_i]'))
 lower = InversionModel(ign[1:max_i,1:2], Array(perplexresults[:,3,1:max_i]'))
 
 
-# Get seismic data and invert 
+# Get seismic data, resample then invert 
 # Upper 
-weight, rho, vp, vpvs = crustDistribution.getAllSeismic(6)
+rho, vp, vpvs = crustDistribution.getAllSeismic(6)
 
 (means, errors) = estimateComposition(upper, rho, vp, vpvs)
 println("Upper $(nanmean(means))")
 
 # Middle 
-weight, rho, vp, vpvs = crustDistribution.getAllSeismic(7)
+rho, vp, vpvs = crustDistribution.getAllSeismic(7)
 (means, errors) = estimateComposition(middle, rho, vp, vpvs)
 println("Middle $(nanmean(means))")
 
 # Lower
-weight, rho, vp, vpvs = crustDistribution.getAllSeismic(8)
+rho, vp, vpvs = crustDistribution.getAllSeismic(8)
 (means, errors) = estimateComposition(middle, rho, vp, vpvs)
 println("Lower $(nanmean(means))")
 
