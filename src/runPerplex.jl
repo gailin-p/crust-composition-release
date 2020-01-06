@@ -80,8 +80,8 @@ function worker()
         	P_range = [1, ceil(Int,layers[3]*dpdz)] # run to base of crust. 
 
         	# Run perplex
-        	perplex_configure_geotherm(perplex, scratch, comp, elements=elts,
-                P_range=P_range, geotherm=geotherm, dataset=dataset, solution_phases=solutions,
+        	perplex_configure_geotherm(perplex, scratch, comp, elts,
+                P_range, 273.15, geotherm, dataset=dataset, solution_phases=solutions,
                 excludes="", index=rank, npoints=npoints)
             seismic = perplex_query_seismic(perplex, scratch, index=rank)
 
