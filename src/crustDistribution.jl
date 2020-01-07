@@ -14,6 +14,7 @@ using StatGeochem
 using JLD
 using MAT 
 using Statistics
+using Random
 
 # For building querries 
 dataPath = "data/crust1Layers.jld"
@@ -27,6 +28,8 @@ uncertainty_dat = matread("igncn1.mat")["err2srel"]
 relerr_rho = uncertainty_dat["Rho"]/2
 relerr_vp = uncertainty_dat["Vp"]/2
 relerr_vs = uncertainty_dat["Vs"]/2
+relerr_tc1 = uncertainty_dat["tc1Crust"]/2
+relerr_crust = uncertainty_dat["Crust"]/2 # for crust1.0
 
 # Exports 
 depth = Array{Float64, 2} # n rows, 4 columns (upper, middle, lower, geotherm)
@@ -114,15 +117,73 @@ Return depths
     (550 isotherm, upper,middle,lower)
 TODO return dist values (gaussian, use uncertainty as std?) not exact
 """
-function getCrustParams()
-    i = sample(Weights(weights))
-    return depth[i,:] # geotherm, base of upper, middle, lower
+function getCrustParams(n::Int; uncertain::Bool=false)
+    samples = Array{Float64, 2}(undef, (n,4))
+    for i in 1:n
+        rand_i = sample(Weights(weights))
+        this_sample = depth[rand_i,:] # geotherm, base of upper, middle, lower
+        if uncertain
+            tc1Std = this_sample[1]*relerr_tc1 # standard deviation is relative to geotherm 
+            crustStd = this_sample[3]*relerr_tc1 # Use middle crust to get std TODO ??? 
+            samples[i,:] = [this_sample[1]+(randn()*tc1Std), this_sample[2]+(randn()*crustStd), 
+                this_sample[3]+(randn()*crustStd), this_sample[4]+(randn()*crustStd)] 
+        else 
+            samples[i,:] = this_sample
+        end
+    end
+    return samples
+end
+
+
+"""
+    getCrustParams(bin, max, n)
+Get random layer depths and geotherms for n samples when geotherms are binned. 
+Use bin min and bin max to limit where geotherms are pulled from. 
+Bin prior to adding uncertainty, because that uncertainty in geotherm 
+exists for the samples we're inverting too. 
+Return Array of size (n, 4), geotherm and layers for n samples. 
+"""
+function getCrustParams(bin_min::Number, bin_max::Number, n::Int; uncertain::Bool=false)
+    test = (depth[:,1] .<= bin_max) .& (depth[:,1] .> bin_min) 
+    bin_depth = depth[test,:]
+    #println("bin has $(length(unique(bin_depth[:,1]))) samples") # Note that 88 is not in tc1 geotherms, so that bin will be smaller
+    bin_weight = weights[test]
+    samples = Array{Float64, 2}(undef, (n,4))
+    for i in 1:n
+        rand_i = sample(Weights(bin_weight))
+        this_sample = bin_depth[rand_i,:] # geotherm, base of upper, middle, lower
+        if uncertain
+            tc1Std = this_sample[1]*relerr_tc1 # standard deviation is relative to geotherm 
+            crustStd = this_sample[3]*relerr_tc1 # Use middle crust to get std TODO ??? 
+            samples[i,:] = [this_sample[1]+(randn()*tc1Std), this_sample[2]+(randn()*crustStd), 
+                this_sample[3]+(randn()*crustStd), this_sample[4]+(randn()*crustStd)] 
+        else 
+            samples[i,:] = this_sample
+        end
+    end 
+    return samples
 end
 export getCrustParams
 
 """
+    binBoundaries(n) 
+Return range of boundaries that gives x bins 
+Ensure that range is divisible by n by padding on top and bottom 
+so that most bins have same # of discrete tc1 geotherm depths, 
+so that resulting geotherm ranges in data sent to perplex will be of equal size
+"""
+function binBoundaries(n::Int)
+    dmin = minimum(depth[:,1])
+    dmax = maximum(depth[:,1])
+    to_add = (n - 1 - (dmax - dmin)%(n-1))/2 # add this to top and bottom so that (dmax - dmin)%(n-1) = 0 and we have even-sized bins
+    return LinRange(dmin-to_add, dmax+to_add, n)
+end
+export binBoundaries 
+
+"""
     getAllSeismic()
 Return a touple of weights and lists of seismic values (weights, rho, vp, vp/vs)
+From Crust1.0
 Weights are for differing sizes of lat/long squares 
   (different from global weights because different filter)
 Also resample. 

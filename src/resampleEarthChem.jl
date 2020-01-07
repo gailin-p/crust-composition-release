@@ -46,6 +46,10 @@ s = ArgParseSettings()
         arg_type = String
         range_tester = x -> (x in ["","silica"])
         default = ""
+    "--bin_geotherms", "-b"
+        help = "Bin geotherms? (1 for no binning.) Provides b output files, one for each bin"
+        arg_type = Int
+        default = 1
 end
 parsed_args = parse_args(ARGS, s)
 
@@ -65,6 +69,12 @@ end
 # Clean up data before resampling
 # Start with all Fe as FeO TODO before or after resample? TODO what error to use for binned FeO?
 ign["FeO"] = feoconversion.(ign["FeO"], ign["Fe2O3"], ign["FeOT"], ign["Fe2O3T"])
+
+# TODO 
+# Reject samples with suspicious anhydrous normalizations
+# anhydrousnorm = sum(ign[:,2:9], dims=2)
+# t = (anhydrousnorm .< 101) .& (anhydrousnorm .> 90)
+# ign = ign[t[:],:]
 
 # Set undefined elements to average. TODO is this right?
 for e in elements
@@ -94,26 +104,39 @@ for i = 1:length(elements)
     outtable[:,i+1] = resampled[elements[i]]
 end
 
-@showprogress "Randomly applying geotherms: " for j = 1:size(outtable,1)
-    outtable[j,length(elements)+2:end] = crustDistribution.getCrustParams()
-end
-
 # Fix any resampled below 0
 outtable[outtable .<= 0] .= 0
 
-# Reject samples with suspicious anhydrous normalizations
-# TODO should I do this for resampled samples?
-anhydrousnorm = sum(outtable[:,2:9], dims=2)
-t = (anhydrousnorm .< 101) .& (anhydrousnorm .> 90)
-outtable = outtable[t[:],:]
-
-println("Discarded $(length(resampled["SiO2"]) - sum(t)) because of suspicious anhydrous normalizations")
-
 outtable[:,1] = Array(1:size(outtable,1)) # Set indices
 
-# Write accepted samples to file
-dir = parsed_args["data_prefix"]
-mkpath("data/"*dir) # make if does not exist
+# Apply geotherms. Either any old geotherm will do or we need to replicate and apply different ones.
+bins = parsed_args["bin_geotherms"]
+if bins == 1
+    outtable[:,length(elements)+2:end] = crustDistribution.getCrustParams(size(outtable,1), uncertain=true)
 
-path = "data/"*dir*"/bsr_ignmajors.csv"
-writedlm(path, round.(outtable, digits=5), ",")
+    # Write accepted samples to file
+    dir = parsed_args["data_prefix"]
+    mkpath("data/"*dir) # make if does not exist
+
+    path = "data/"*dir*"/bsr_ignmajors.csv"
+    writedlm(path, round.(outtable, digits=5), ",")
+else # Replication and bins required! 
+    bin_boundaries = crustDistribution.binBoundaries(bins + 1)
+    for (i, bin_bottom) in enumerate(bin_boundaries[1:end-1])
+        bin_top = bin_boundaries[i+1]
+        outtable[:,length(elements)+2:end] = 
+            crustDistribution.getCrustParams(bin_bottom, bin_top, size(outtable,1), uncertain=true)
+
+        # Write this outtable before doing the next 
+        dir = parsed_args["data_prefix"]
+        mkpath("data/"*dir) # make if does not exist
+
+        path = "data/"*dir*"/bsr_ignmajors_$(i).csv"
+        writedlm(path, round.(outtable, digits=5), ",")
+    end 
+end 
+
+
+
+
+
