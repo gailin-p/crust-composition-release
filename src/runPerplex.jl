@@ -20,6 +20,10 @@ s = ArgParseSettings()
         help = "Path to PerpleX directory (data files and utilities)"
         arg_type = String
         required = true
+    "--geotherm_bin", "-b"
+    	help = "Number of perplex bin if using bins this run."
+        arg_type = Int
+        default = -1
 end 
 parsed_args = parse_args(ARGS, s)
 perplex = parsed_args["perplex"]
@@ -130,7 +134,13 @@ Currently does not expect/allow worker failure
 function head()
 	println("head")
 	# Load data used by head 
-	ign = readdlm("data/"*parsed_args["data_prefix"]*"/bsr_ignmajors.csv", ',')
+	if parsed_args["geotherm_bin"] == -1
+		fileName = "data/"*parsed_args["data_prefix"]*"/bsr_ignmajors.csv"
+	else 
+		fileName = "data/"*parsed_args["data_prefix"]*"/bsr_ignmajors_$(parsed_args["geotherm_bin"]).csv"
+	end
+	ign = readdlm(fileName, ',')
+	ign = ign[1:100,:]
 	n_samples = size(ign,1)
 	output = fill(-1.0,(4,3,n_samples+n)) # Collect data. extra space for last worker run
 
@@ -172,7 +182,12 @@ function head()
 
 	# Save output 
 	output = output[:,:,1:n_samples] # discard any trailing -1 
-	h5write("data/"*parsed_args["data_prefix"]*"/perplex_out.h5", "results", output)
+	if parsed_args["geotherm_bin"] == -1
+		fileName = "data/"*parsed_args["data_prefix"]*"/perplex_out.h5"
+	else 
+		fileName = "data/"*parsed_args["data_prefix"]*"/perplex_out_$(parsed_args["geotherm_bin"]).h5"
+	end
+	h5write(fileName, "results", output)
 end 
 
 
