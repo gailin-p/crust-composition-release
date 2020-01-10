@@ -19,7 +19,7 @@
     using JLD
     using ArgParse
 
-    include("bin.jl")
+    include("bin.jl") # TODO use Brenhin's version (bin_bsr with nresamples=0)
 
 # Read user args: prefix for result files, input file names
 s = ArgParseSettings()
@@ -256,19 +256,6 @@ end
 ## --- Variables to explore TODO make these args
 iVar = "PC1"
 elem = "SiO2"
-
-## --- Plot calculated relationship between composition and PC1
-# p = plot();
-# for crust in layers
-#     # Bin PC1 of samples as a fn of composition
-#     x = mcign[elem]
-#     xmin = percentile(x, .5)
-#     xmax = percentile(x,99.5)
-#     c, m, e = bin(x, mcign["Calc_"*crust*"_"*iVar], xmin, xmax,
-#         length(mcign["SiO2"])/length(ign["SiO2"]), 40)
-# end
-
-
 
 ## --- Estimate compositions
 
