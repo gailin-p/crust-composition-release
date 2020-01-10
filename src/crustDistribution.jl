@@ -36,6 +36,24 @@ depth = Array{Float64, 2} # n rows, 4 columns (upper, middle, lower, geotherm)
 export depth
 weights = Array{Float64, 1} # n rows, weight for choosing each row
 export weights
+ages = Array{Float64, 1} # n rows, age of lat/long for this row 
+export ages
+
+# Lats and longs where both tc1 (so age) and crust1 are defined 
+all_lats = Array{Float64, 1} # n rows, age of lat/long for this row 
+all_longs = Array{Float64, 1} # n rows, age of lat/long for this row 
+
+
+all_ages = [ NaN  NaN  NaN
+                25    0   50
+               150   50  250
+               395  250  540
+               695  540  850
+               975  850 1100
+              1400 1100 1700
+              2100 1700 2500
+              2750 2500 3000
+              3250 3000 3500] # From tc1.jl, bins for ages of crust according to tc1 
 
 """
     latLongWeight(lat, long)
@@ -57,6 +75,9 @@ function __init__()
         d = load(dataPath)
         global depth = d["depth"]
         global weights = d["weights"]
+        global ages = d["ages"]
+        global all_lats = d["lats"]
+        global all_longs = d["longs"]
     else
         loadAndSaveCrust1()
     end
@@ -104,10 +125,17 @@ function loadAndSaveCrust1()
     test = [!isnan(x) for x in sum(depth,dims=2)] 
     depth = depth[test[:],:]
     lats = lats[test[:]] # latitudes for values we're keeping
+    longs = longs[test[:]] 
+
+    # get ages 
+    global ages = find_tc1_age(lats, longs)[1]
 
     global weights = latLongWeight.(lats)
 
-    save(dataPath,"depth",depth, "weights", weights)
+    global all_lats = lats 
+    global all_longs = longs 
+
+    save(dataPath,"depth",depth, "weights", weights, "ages", ages, "lats", lats, "longs", longs)
 end
 
 """
@@ -142,6 +170,7 @@ Use bin min and bin max to limit where geotherms are pulled from.
 Bin prior to adding uncertainty, because that uncertainty in geotherm 
 exists for the samples we're inverting too. 
 Return Array of size (n, 4), geotherm and layers for n samples. 
+Used by resampleEarthChem to assign geotherms to resampled values.
 """
 function getCrustParams(bin_min::Number, bin_max::Number, n::Int; uncertain::Bool=false)
     test = (depth[:,1] .<= bin_max) .& (depth[:,1] .> bin_min) 
@@ -182,18 +211,32 @@ export binBoundaries
 
 """
     getAllSeismic()
-Return a touple of weights and lists of seismic values (weights, rho, vp, vp/vs)
+Return a touple of weights and lists of seismic values (rho, vp, vp/vs)
 From Crust1.0
-Weights are for differing sizes of lat/long squares 
-  (different from global weights because different filter)
-Also resample. 
+Also resample (using weights corresponding to area of each 1x1 degree square).
 """
-function getAllSeismic(layer::Int64)
+function getAllSeismic(layer::Integer; age::Number=NaN, n=50000)
     if !(layer in [6,7,8])
         throw(ArgumentError("Layer must be 6, 7, or 8 (crysteline Crust1 layers)"))
     end
+    if !((age in all_ages[:,1]) | isnan(age))
+        throw(ArgumentError("Age must be one of the ages returned by tc1"))
+    end
 
-    (lats, longs) = latsLongs()
+    global all_lats # Lats where both tc1 and crust1.0 defined 
+    global all_longs
+    global depth
+
+    if !isnan(age) # filter for this age min 
+        test = ages .== age
+        lats = all_lats[test]
+        longs = all_longs[test]
+        geotherms = depth[test,4]
+    else 
+        lats = all_lats 
+        longs = all_longs 
+        geotherms = depth[:,4]
+    end 
 
     (vp, vs, rho) = find_crust1_seismic(lats, longs, layer)
 
@@ -204,16 +247,16 @@ function getAllSeismic(layer::Int64)
     p = 1.0 ./ ((k .* median(5.0 ./ k)) .+ 1.0)
 
     # Resample! 
-    samples = hcat(rho, vp, vs)
-    sigma = hcat(rho .* relerr_rho, vp .* relerr_vp, vs .* relerr_vs)
-    resampled = bsresample(samples, sigma, 50000, p)
+    samples = hcat(rho, vp, vs, geotherms)
+    sigma = hcat(rho .* relerr_rho, vp .* relerr_vp, vs .* relerr_vs, geotherms .* relerr_tc1)
+    resampled = bsresample(samples, sigma, n, p)
 
     rho = resampled[:,1]
     vp = resampled[:,2]
     vs = resampled[:,3]
+    geotherms = resampled[:,4]
 
-    return (rho, vp, vp ./ vs)
+    return (rho, vp, vp ./ vs, geotherms)
 end
-export getAllSeismic
 
 end
