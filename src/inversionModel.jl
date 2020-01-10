@@ -34,9 +34,11 @@ struct InversionModel
 	vpvsNorm::Norm
 	pca::PCA 
 	# Binned relationship between PCA and composition
-	c # center of bin (seismic PCA)
-	m::Array{Float64,1} # mean of bin (elt of interest)
-	e::Array{Float64,1} # error of bin (elt of interest)
+	interp::AbstractInterpolation # Interpolation from PCA to element of interest 
+	error_interp::AbstractInterpolation # Interpolation from PCA to standard deviation of elt of interest 
+	# Original data 
+	seismic::Array{Float64,1} # Seismic data of perplex samples post-pca. length n 
+	comp::Array{Float64,1} # composition of element of interest. length n. 
 end
 
 function normalize(norm::Norm, arr::Array)
@@ -71,7 +73,7 @@ function InversionModel(ign::Array{Float64, 2}, seismic::Array{Float64, 2})
     pca = fit(PCA, samples)
     pca_samples = transform(pca, samples)[1,:]
 
-    # Bin  TODO below copy-pasted
+    # Bin  
     # Look at your independent (seismic) variable of choice
     xmin = percentile(pca_samples, .5)
     xmax = percentile(pca_samples,99.5)
@@ -81,7 +83,16 @@ function InversionModel(ign::Array{Float64, 2}, seismic::Array{Float64, 2})
     # TODO not using oversampling ratio right now. what's correct? 
     c, m, e = bin(pca_samples, ign[:,2][test], xmin, xmax, 40)
 
-    return InversionModel(rhoNorm, vpNorm, vpvsNorm, pca, c, m, e)
+    itp = interpolate(m, BSpline(Linear())) # Linear interpolation of bin means
+    itp = scale(itp, c) # Scale by bin centers
+    itp = extrapolate(itp, Flat()) # outside bin means, just give the upper or lower bin mean. TODO gailin is this the right choice?
+
+    # Interpolate errors
+    itp_e = interpolate(e, BSpline(Linear())) # Linear interpolation of bin means
+    itp_e = scale(itp_e, c) # Scale by bin centers
+    itp_e = extrapolate(itp_e, Flat()) # TODO gailin - why is it ok to interpolate uncertainty?
+
+    return InversionModel(rhoNorm, vpNorm, vpvsNorm, pca, itp, itp_e, pca_samples, ign[:,2])
 end
 
 """
@@ -107,20 +118,11 @@ function estimateComposition(model::InversionModel,
     # PCA
     pca_samples = transform(model.pca, samples)[1,:]
 
-    # TODO move the interpolation defn into model creation 
-    # Interpolate (element of interest) values for each (obs seismic) sample in the dataset
-    itp = interpolate(model.m, BSpline(Linear())) # Linear interpolation of bin means
-    sitp = scale(itp, model.c) # Scale by bin centers
-    esitp = extrapolate(sitp, Flat()) # outside bin means, just give the upper or lower bin mean. TODO gailin is this the right choice?
     # Run on test data 
-    m_itp = esitp(pca_samples)
+    m_itp = model.interp(pca_samples)
 
     # Interpolate errors
-    itp_e = interpolate(model.e, BSpline(Linear())) # Linear interpolation of bin means
-    sitp_e = scale(itp_e, model.c) # Scale by bin centers
-    esitp_e = extrapolate(sitp_e, Flat()) # TODO gailin - why is it ok to interpolate uncertainty?
-    
-    e_itp = esitp_e(pca_samples)
+    e_itp = model.error_interp(pca_samples)
 
     return (m_itp, e_itp)
 end

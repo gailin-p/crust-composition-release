@@ -21,7 +21,7 @@ s = ArgParseSettings()
         arg_type = String
         required = true
     "--geotherm_bin", "-b"
-    	help = "Number of perplex bin if using bins this run."
+    	help = "Number of perplex bin if using bins this run. (Just controls which sample csv we look for)"
         arg_type = Int
         default = -1
 end 
@@ -140,7 +140,6 @@ function head()
 		fileName = "data/"*parsed_args["data_prefix"]*"/bsr_ignmajors_$(parsed_args["geotherm_bin"]).csv"
 	end
 	ign = readdlm(fileName, ',')
-	ign = ign[1:100,:]
 	n_samples = size(ign,1)
 	output = fill(-1.0,(4,3,n_samples+n)) # Collect data. extra space for last worker run
 
