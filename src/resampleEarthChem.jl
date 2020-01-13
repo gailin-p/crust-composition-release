@@ -42,9 +42,9 @@ s = ArgParseSettings()
         arg_type = Int
         default = 100000
     "--weight", "-w"
-        help = "Weight according to silica content? Allowed: silica"
+        help = "Weight during resampling? Allowed: silica, latlongage"
         arg_type = String
-        range_tester = x -> (x in ["","silica"])
+        range_tester = x -> (x in ["","silica","latlongage"])
         default = ""
     "--bin_geotherms", "-b"
         help = "Bin geotherms? (1 for no binning.) Provides b output files, one for each bin"
@@ -57,24 +57,44 @@ parsed_args = parse_args(ARGS, s)
 ign = matread(parsed_args["data"])
 ign["elements"] = string.(ign["elements"]) # Since .mat apparently can"t tell the difference between "B" and "b"
 
-# List of elements we want to export (primarily element oxides)
-elements = ["SiO2","TiO2","Al2O3","FeO","MgO","CaO","Na2O","K2O","H2O_Total","CO2","tc1Crust"]
+# List of elements we want to resample export (primarily element oxides)
+# Lat, long and age are unused, but export for visualization or reference. 
+elements = ["SiO2","TiO2","Al2O3","FeO","MgO","CaO","Na2O","K2O","H2O_Total","CO2", "Latitude", "Longitude", "Age"]
 
 # Set uncertainties
 for e in elements
     ign["err"][e] = ign[e] .* (ign["err2srel"][e] / 2) # default
-    ign["err"][e][isnan.(ign[e])] .= nanstd(ign[e]) # missing data gets std TODO is this ok?
+    ign["err"][e][isnan.(ign[e])] .= nanstd(ign[e]) # missing data gets std, which is a much larger uncertainty
 end
+
+# Special cases: Latitude & Longitude
+ign["err"]["Latitude"] = ign["Loc_Prec"]
+ign["err"]["Longitude"] = ign["Loc_Prec"]
+
+# Special cases: Age
+ign["err"]["Age"] = (ign["Age_Max"]-ign["Age_Min"])/2;
+# Find points with < 50 Ma absolute uncertainty
+t = (ign["err"]["Age"] .< 50) .| isnan.(ign["err"]["Age"])
+# Set 50 Ma minimum age uncertainty (1-sigma)
+ign["err"]["Age"][t] .= 50
 
 # Clean up data before resampling
 # Start with all Fe as FeO TODO before or after resample? TODO what error to use for binned FeO?
 ign["FeO"] = feoconversion.(ign["FeO"], ign["Fe2O3"], ign["FeOT"], ign["Fe2O3T"])
 
-# TODO 
 # Reject samples with suspicious anhydrous normalizations
-# anhydrousnorm = sum(ign[:,2:9], dims=2)
-# t = (anhydrousnorm .< 101) .& (anhydrousnorm .> 90)
-# ign = ign[t[:],:]
+anhydrousnorm = Array{Bool,1}(undef, length(ign[elements[1]]))
+for i in 1:length(ign[elements[1]]) # for every sample 
+    elts = [ign[elt][i] for elt in elements[1:8]] # sum of percents for every sample 
+    total = sum(elts)
+    anhydrousnorm[i] = (total < 101) & (total > 90) # is this sample reasonable?
+end 
+println("Throwing away $(length(ign[elements[1]]) - sum(anhydrousnorm)) samples because of suspicious anhydrous normalizations")
+
+for elt in elements 
+    ign[elt] = ign[elt][anhydrousnorm]
+    ign["err"][elt] = ign["err"][elt][anhydrousnorm]
+end 
 
 # Set undefined elements to average. TODO is this right?
 for e in elements
@@ -85,11 +105,20 @@ end
 # Resample
 # TODO should I resample weighting for uniform SiO2?
 if (parsed_args["weight"] == "silica") # weight according to silica content
+    throw(AssertionError("Hey, we decided weighting by silica is bad because we want representative 
+        proportions of compositions!"))
+
     k = invweight(ign["SiO2"], (nanmaximum(ign["SiO2"])-nanminimum(ign["SiO2"]))/100)
 
     # Probability of keeping a given data point when sampling:
     # We want to select roughly one-fith of the full dataset in each re-sample,
     # which means an average resampling probability <p> of about 0.2
+    p = 1.0 ./ ((k .* median(5.0 ./ k)) .+ 1.0)
+    resampled = bsresample(ign, parsed_args["num_samples"], elements, p)
+elseif (parsed_args["weight"] == "latlongage")
+    println("Weighting by lat, long, age.")
+
+    k = invweight(ign["Latitude"], ign["Longitude"], ign["Age"])
     p = 1.0 ./ ((k .* median(5.0 ./ k)) .+ 1.0)
     resampled = bsresample(ign, parsed_args["num_samples"], elements, p)
 else
@@ -104,8 +133,8 @@ for i = 1:length(elements)
     outtable[:,i+1] = resampled[elements[i]]
 end
 
-# Fix any resampled below 0
-outtable[outtable .<= 0] .= 0
+# Fix any resampled below 0 (only for elements, not for lat/long/age)
+outtable[:,2:end-4][outtable[:,2:end-4] .<= 0] .= 0
 
 outtable[:,1] = Array(1:size(outtable,1)) # Set indices
 
@@ -118,7 +147,7 @@ if bins == 1
     dir = parsed_args["data_prefix"]
     mkpath("data/"*dir) # make if does not exist
 
-    path = "data/"*dir*"/bsr_ignmajors.csv"
+    path = "data/"*dir*"/bsr_ignmajors_1.csv"
     writedlm(path, round.(outtable, digits=5), ",")
 else # Replication and bins required! 
     bin_boundaries = crustDistribution.binBoundaries(bins + 1)
