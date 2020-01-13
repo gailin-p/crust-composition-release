@@ -226,8 +226,9 @@ function getAllSeismic(layer::Integer; age::Number=NaN, n=50000)
     global all_lats # Lats where both tc1 and crust1.0 defined 
     global all_longs
     global depth
+    global ages
 
-    if !isnan(age) # filter for this age min 
+    if !isnan(age) # filter for this age bin 
         test = ages .== age
         lats = all_lats[test]
         longs = all_longs[test]
