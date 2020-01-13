@@ -9,7 +9,7 @@ using StatsBase
 using Interpolations
 
 include("../bin.jl") # TODO use Brenhin's version (bin_bsr with nresamples=0)
-
+include("crustDistribution.jl")
 
 prop_labels = ["rho,kg/m3","vp,km/s","vp/vs"] # properties in this order
 
@@ -32,7 +32,7 @@ struct InversionModel
 	rhoNorm::Norm
 	vpNorm::Norm
 	vpvsNorm::Norm
-	pca::PCA 
+	pca::PCA
 	# Binned relationship between PCA and composition
 	interp::AbstractInterpolation # Interpolation from PCA to element of interest 
 	error_interp::AbstractInterpolation # Interpolation from PCA to standard deviation of elt of interest 
@@ -127,4 +127,48 @@ function estimateComposition(model::InversionModel,
     return (m_itp, e_itp)
 end
 
+"""
+	makeInversion(data_location)
+
+Load data for an inversion run (function expects ign csv from resampleEarthChem and subsequent perplex results)
+TODO add single-bin option. 
+
+Returns touple of lists of models, (upper, middle, lower), each with as many models as geotherm bins. 
+"""
+function makeModels(data_location::String)
+	# Elements in ign files: index, elts, geotherm, layers. TODO add header to CSV created by resampleEarthChem
+	elements = ["index","SiO2","TiO2","Al2O3","FeO","MgO","CaO","Na2O","K2O","H2O_Total","CO2","padding", "tc1Crust","upper","middle","lower"] 
+
+	# Build models for every (geotherm bin)/layer combo 
+	filePrefix = "perplex_out_"
+	fileNames = filter(x->contains(x,"perplex_out_"), readdir("data/$(parsed_args["data_prefix"])"))
+	nBins = length(fileNames)
+	bins = crustDistribution.binBoundaries(nBins)
+
+	# Models for each layer. upper[i] is model for i-th geotherm bin. 
+	upper = Array{InversionModel, 1}(undef, nBins)
+	middle = Array{InversionModel, 1}(undef, nBins)
+	lower = Array{InversionModel, 1}(undef, nBins)
+
+	@showprogress 1 "Building models" for bin_num in 1:nBins
+		# Build models for each layer for this bin 
+		ignFile = "data/"*parsed_args["data_prefix"]*"/bsr_ignmajors_$(bin_num).csv"
+		ign = readdlm(ignFile, ',')
+
+		# Read perplex results. Shape (4, 3, n), property, layer, index. 
+		perplexFile = "data/"*parsed_args["data_prefix"]*"/perplex_out_$(bin_num).h5"
+		perplexresults = h5read(perplexFile, "results")
+
+		if size(ign,1) != size(perplexresults,3)
+			throw(AssertionError("Size of ign does not match size of perplex results from $(fileName)"))
+		end 
+
+		# Build models. use SiO2 (index 2 in ign). 
+		upper[bin_num] = InversionModel(ign[:,1:2], Array(perplexresults[:,1,:]'))
+		middle[bin_num] = InversionModel(ign[:,1:2], Array(perplexresults[:,2,:]'))
+		lower[bin_num] = InversionModel(ign[:,1:2], Array(perplexresults[:,3,:]'))
+	end 
+
+	return (upper, middle, lower)
+end 
 

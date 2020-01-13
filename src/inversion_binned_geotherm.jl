@@ -19,44 +19,13 @@ s = ArgParseSettings()
     "--data_prefix", "-d"
         help = "Folder for data files"
         arg_type= String
-        default="bin_geotherms"
+        default="remote/bin_geotherm_si_weighted"
 end
 parsed_args = parse_args(ARGS, s)
 
-# Elements in ign files: index, elts, geotherm, layers. TODO add header to CSV created by resampleEarthChem
-elements = ["index","SiO2","TiO2","Al2O3","FeO","MgO","CaO","Na2O","K2O","H2O_Total","CO2","padding", "tc1Crust","upper","middle","lower"] 
-
-# Build models for every (geotherm bin)/layer combo 
-filePrefix = "perplex_out_"
-fileNames = filter(x->contains(x,"perplex_out_"), readdir("data/$(parsed_args["data_prefix"])"))
-nBins = length(fileNames)
+models = makeModels(parsed_args["data_prefix"]) # see inversionModel.jl. returns (upper, middle, lower) models.
+nBins = length(models[1])
 bins = crustDistribution.binBoundaries(nBins)
-
-# Models for each layer. upper[i] is model for i-th geotherm bin. 
-upper = Array{InversionModel, 1}(undef, nBins)
-middle = Array{InversionModel, 1}(undef, nBins)
-lower = Array{InversionModel, 1}(undef, nBins)
-
-@showprogress 1 "Building models" for bin_num in 1:nBins
-	# Build models for each layer for this bin 
-	ignFile = "data/"*parsed_args["data_prefix"]*"/bsr_ignmajors_$(bin_num).csv"
-	ign = readdlm(ignFile, ',')
-
-	# Read perplex results. Shape (4, 3, n), property, layer, index. 
-	perplexFile = "data/"*parsed_args["data_prefix"]*"/perplex_out_$(bin_num).h5"
-	perplexresults = h5read(perplexFile, "results")
-
-	if size(ign,1) != size(perplexresults,3)
-		throw(AssertionError("Size of ign does not match size of perplex results from $(fileName)"))
-	end 
-
-	# Build models. use SiO2 (index 2 in ign). 
-	upper[bin_num] = InversionModel(ign[:,1:2], Array(perplexresults[:,1,:]'))
-	middle[bin_num] = InversionModel(ign[:,1:2], Array(perplexresults[:,2,:]'))
-	lower[bin_num] = InversionModel(ign[:,1:2], Array(perplexresults[:,3,:]'))
-end 
-
-models = [upper, middle, lower]
 
 # Get data to invert (resampled Crust1.0 data)
 upperDat = crustDistribution.getAllSeismic(6) # returns rho, vp, vpvs, tc1
@@ -91,6 +60,7 @@ println("Mean of lower results $(nanmean(results[3]))")
 
 ages = crustDistribution.all_ages[2:end,1] # first col is median age in bin, first row is NaN
 age_results = Array{Float64, 2}(undef, 3, length(ages)) # (layer, age)
+age_1std = Array{Float64, 2}(undef, 3, length(ages)) # (layer, age)
 
 @showprogress 1 "running age samples:" for (age_index, age) in enumerate(ages) # duplicate of above, but using age when requesting data to invert and saving mean data to age_results
 
@@ -105,6 +75,10 @@ age_results = Array{Float64, 2}(undef, 3, length(ages)) # (layer, age)
 	results_middle = Array{Float64, 1}(undef, length(middleDat[1]))
 	results_lower = Array{Float64, 1}(undef, length(lowerDat[1]))
 	results = [results_upper, results_middle, results_lower]
+	error_upper = Array{Float64, 1}(undef, length(upperDat[1]))
+	error_middle = Array{Float64, 1}(undef, length(middleDat[1]))
+	error_lower = Array{Float64, 1}(undef, length(lowerDat[1]))
+	inverted_error = [error_upper, error_middle, error_lower]
 
 	for (i, bin_bottom) in enumerate(bins[1:end-1])
 		# Look in ign for only the samples with geotherms in this bin 
@@ -115,6 +89,7 @@ age_results = Array{Float64, 2}(undef, 3, length(ages)) # (layer, age)
 			test = (geotherm .> bin_bottom) .& (geotherm .<= bin_top)
 			(means, errors) = estimateComposition(models[layer][i], layerDat[1][test], layerDat[2][test], layerDat[3][test])
 			results[layer][test] = means
+			inverted_error[layer][test] = errors
 		end 
 	end 
 
@@ -122,6 +97,9 @@ age_results = Array{Float64, 2}(undef, 3, length(ages)) # (layer, age)
 	age_results[1,age_index] = nanmean(results[1])
 	age_results[2,age_index] = nanmean(results[2])
 	age_results[3,age_index] = nanmean(results[3])
+	age_1std[1,age_index] = nanmean(inverted_error[1])
+	age_1std[2,age_index] = nanmean(inverted_error[2])
+	age_1std[3,age_index] = nanmean(inverted_error[3])
 end 
 
 
@@ -129,7 +107,7 @@ p = plot(size=(800,600));
 
 layer_names = ["upper", "middle", "lower"]
 for i in 1:3 # layers 
-	plot!(p, ages, age_results[i,:], label=layer_names[i])
+	plot!(p, ages, age_results[i,:], yerror=age_1std[i,:], label=layer_names[i])
 end 
 
 plot!(p, [200], [66.0], seriestype=:scatter, marker=7,markershape=:star5, markercolor=:blue, label="Upper of R & F")
