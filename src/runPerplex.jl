@@ -5,6 +5,7 @@ using ArgParse
 using DelimitedFiles
 using StatGeochem
 using HDF5
+include("config.jl")
 
 s = ArgParseSettings()
 @add_arg_table s begin
@@ -36,12 +37,11 @@ n_workers = MPI.Comm_size(comm)-1
 
 # Global constants 
 n = 20 # number of samples to send to each worker at once
-sample_size = 16 # number of columns in ign per sample 
+sample_size = length(PERPLEX_ELEMENTS) # number of columns in ign per sample 
 
 # General perplex options 
 exclude = ""
 dataset = "hpha02ver.dat"
-elts = ["SIO2", "TIO2", "AL2O3", "FEO", "MGO", "CAO", "NA2O", "K2O", "H2O", "CO2"]
 dpdz = 2900. * 9.8 / 1E5 * 1E3
 # For now, use fluid and throw away results with NaN or 0 seismic properties. 
 solutions = "O(HP)\nOpx(HP)\nOmph(GHP)\nGt(HP)\noAmph(DP)\nGlTrTsPg\nT\nB\nAnth\nChl(HP)\nBio(TCC)\nMica(CF)\nCtd(HP)\nIlHm(A)\nSp(HP)\nSapp(HP)\nSt(HP)\nfeldspar\nDo(HP)\nF\n"
@@ -84,7 +84,7 @@ function worker()
         	P_range = [1, ceil(Int,layers[3]*dpdz)] # run to base of crust. 
 
         	# Run perplex
-        	perplex_configure_geotherm(perplex, scratch, comp, elts,
+        	perplex_configure_geotherm(perplex, scratch, comp, PERPLEX_COMPOSITION_ELTS,
                 P_range, 273.15, geotherm, dataset=dataset, solution_phases=solutions,
                 excludes="", index=rank, npoints=npoints)
             seismic = perplex_query_seismic(perplex, scratch, index=rank)

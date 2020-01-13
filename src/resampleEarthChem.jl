@@ -26,6 +26,7 @@ using Logging
 using Statistics
 using ProgressMeter: @showprogress
 include("crustDistribution.jl")
+include("config.jl") # constants defined here 
 
 s = ArgParseSettings()
 @add_arg_table s begin
@@ -59,10 +60,9 @@ ign["elements"] = string.(ign["elements"]) # Since .mat apparently can"t tell th
 
 # List of elements we want to resample export (primarily element oxides)
 # Lat, long and age are unused, but export for visualization or reference. 
-elements = ["SiO2","TiO2","Al2O3","FeO","MgO","CaO","Na2O","K2O","H2O_Total","CO2", "Latitude", "Longitude", "Age"]
 
 # Set uncertainties
-for e in elements
+for e in RESAMPLED_ELEMENTS
     ign["err"][e] = ign[e] .* (ign["err2srel"][e] / 2) # default
     ign["err"][e][isnan.(ign[e])] .= nanstd(ign[e]) # missing data gets std, which is a much larger uncertainty
 end
@@ -83,21 +83,21 @@ ign["err"]["Age"][t] .= 50
 ign["FeO"] = feoconversion.(ign["FeO"], ign["Fe2O3"], ign["FeOT"], ign["Fe2O3T"])
 
 # Reject samples with suspicious anhydrous normalizations
-anhydrousnorm = Array{Bool,1}(undef, length(ign[elements[1]]))
-for i in 1:length(ign[elements[1]]) # for every sample 
-    elts = [ign[elt][i] for elt in elements[1:8]] # sum of percents for every sample 
+anhydrousnorm = Array{Bool,1}(undef, length(ign[RESAMPLED_ELEMENTS[1]]))
+for i in 1:length(ign[RESAMPLED_ELEMENTS[1]]) # for every sample 
+    elts = [ign[elt][i] for elt in COMPOSITION_ELEMENTS[1:8]] # sum of percents for every sample 
     total = sum(elts)
     anhydrousnorm[i] = (total < 101) & (total > 90) # is this sample reasonable?
 end 
-println("Throwing away $(length(ign[elements[1]]) - sum(anhydrousnorm)) samples because of suspicious anhydrous normalizations")
+println("Throwing away $(length(ign[RESAMPLED_ELEMENTS[1]]) - sum(anhydrousnorm)) samples because of suspicious anhydrous normalizations")
 
-for elt in elements 
+for elt in RESAMPLED_ELEMENTS 
     ign[elt] = ign[elt][anhydrousnorm]
     ign["err"][elt] = ign["err"][elt][anhydrousnorm]
 end 
 
 # Set undefined elements to average. TODO is this right?
-for e in elements
+for e in RESAMPLED_ELEMENTS
     ign[e][isnan.(ign[e])] .= nanmean(ign[e])
 end
 
@@ -114,23 +114,23 @@ if (parsed_args["weight"] == "silica") # weight according to silica content
     # We want to select roughly one-fith of the full dataset in each re-sample,
     # which means an average resampling probability <p> of about 0.2
     p = 1.0 ./ ((k .* median(5.0 ./ k)) .+ 1.0)
-    resampled = bsresample(ign, parsed_args["num_samples"], elements, p)
+    resampled = bsresample(ign, parsed_args["num_samples"], RESAMPLED_ELEMENTS, p)
 elseif (parsed_args["weight"] == "latlongage")
     println("Weighting by lat, long, age.")
 
     k = invweight(ign["Latitude"], ign["Longitude"], ign["Age"])
     p = 1.0 ./ ((k .* median(5.0 ./ k)) .+ 1.0)
-    resampled = bsresample(ign, parsed_args["num_samples"], elements, p)
+    resampled = bsresample(ign, parsed_args["num_samples"], RESAMPLED_ELEMENTS, p)
 else
-    resampled = bsresample(ign, parsed_args["num_samples"], elements)
+    resampled = bsresample(ign, parsed_args["num_samples"], RESAMPLED_ELEMENTS)
 end
 
 # Write ignmajors
 
 # Create 2d array of out element data to export
-outtable = Array{Float64,2}(undef, length(resampled["SiO2"]), length(elements)+5)
-for i = 1:length(elements)
-    outtable[:,i+1] = resampled[elements[i]]
+outtable = Array{Float64,2}(undef, length(resampled["SiO2"]), length(PERPLEX_ELEMENTS))
+for i = 1:length(RESAMPLED_ELEMENTS)
+    outtable[:,i+1] = resampled[RESAMPLED_ELEMENTS[i]]
 end
 
 # Fix any resampled below 0 (only for elements, not for lat/long/age)
@@ -141,7 +141,7 @@ outtable[:,1] = Array(1:size(outtable,1)) # Set indices
 # Apply geotherms. Either any old geotherm will do or we need to replicate and apply different ones.
 bins = parsed_args["bin_geotherms"]
 if bins == 1
-    outtable[:,length(elements)+2:end] = crustDistribution.getCrustParams(size(outtable,1), uncertain=true)
+    outtable[:,length(RESAMPLED_ELEMENTS)+2:end] = crustDistribution.getCrustParams(size(outtable,1), uncertain=true)
 
     # Write accepted samples to file
     dir = parsed_args["data_prefix"]
@@ -153,7 +153,7 @@ else # Replication and bins required!
     bin_boundaries = crustDistribution.binBoundaries(bins + 1)
     for (i, bin_bottom) in enumerate(bin_boundaries[1:end-1])
         bin_top = bin_boundaries[i+1]
-        outtable[:,length(elements)+2:end] = 
+        outtable[:,length(RESAMPLED_ELEMENTS)+2:end] = 
             crustDistribution.getCrustParams(bin_bottom, bin_top, size(outtable,1), uncertain=true)
 
         # Write this outtable before doing the next 
