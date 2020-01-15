@@ -1,3 +1,11 @@
+"""
+MPI script for running perplex jobs on a cluster. 
+Requries at least two MPI nodes, but if running on one machine for test use MPI options like: -np 2 --oversubscribe
+
+Run like: 
+mpiexec <mpi options> julia src/runPerplex.jl <script options> 
+"""
+
 using MPI
 MPI.Init()
 
@@ -54,7 +62,7 @@ p_label = "P(bar)"
 
 function worker() 
 	println("worker rank $(rank)")
-	results = fill(-1.0,(4,3,n)) # property (index, rho, vp, vpvs), layer, sample
+	results = fill(-1.0,(2,4,3,n)) # result|error, property (index, rho, vp, vpvs), layer, sample
 	requested = fill(-1.0, (n, sample_size))
 	while true 
 		# Blocking send of data 
@@ -72,9 +80,9 @@ function worker()
 		# Run perplex  
 		for i in 1:n 
 			index = requested[i,1]
-			comp = requested[i,2:12]
-			tc1 = requested[i,13]
-			layers = requested[i,14:end]
+			comp = requested[i,2:length(COMPOSITION_ELEMENTS)+1]
+			tc1 = requested[i,findfirst(isequal("geotherm"),PERPLEX_ELEMENTS)]
+			layers = requested[i,findfirst(isequal("upper"),PERPLEX_ELEMENTS):findfirst(isequal("lower"),PERPLEX_ELEMENTS)]
 			if index == -1 # out of real samples 
 				break
 			end
@@ -114,13 +122,17 @@ function worker()
             lower = (pressure .> p_layers[2]) .& (pressure .<= p_layers[3])
             for prop_i in 1:length(prop_labels)
             	prop = prop_labels[prop_i]
-            	results[prop_i+1,1,i] = nanmean(seismic[prop][upper])
-            	results[prop_i+1,2,i] = nanmean(seismic[prop][middle])
-            	results[prop_i+1,3,i] = nanmean(seismic[prop][lower])
+            	results[1,prop_i+1,1,i] = nanmean(seismic[prop][upper])
+            	results[1,prop_i+1,2,i] = nanmean(seismic[prop][middle])
+            	results[1,prop_i+1,3,i] = nanmean(seismic[prop][lower])
+            	# Error 
+            	results[2,prop_i+1,1,i] = nanstd(seismic[prop][upper])
+            	results[2,prop_i+1,2,i] = nanstd(seismic[prop][middle])
+            	results[2,prop_i+1,3,i] = nanstd(seismic[prop][lower])
             end
 
             # Set index in results 
-            results[1,:,i] .= index
+            results[:,1,:,i] .= index
 
         end
 	end
@@ -137,12 +149,12 @@ function head()
 	fileName = "data/"*parsed_args["data_prefix"]*"/bsr_ignmajors_$(parsed_args["geotherm_bin"]).csv"
 	ign = readdlm(fileName, ',')
 	n_samples = size(ign,1)
-	output = fill(-1.0,(4,3,n_samples+n)) # Collect data. extra space for last worker run
+	output = fill(-1.0,(2,4,3,n_samples+n)) # Collect data. extra space for last worker run
 
 	# Initial recvs for workers that haven't yet worked
 	reqs = Vector{MPI.Request}(undef, n_workers)
 	for i in 1:n_workers
-		reqs[i] = MPI.Irecv!(Array{Float64,3}(undef,(4,3,n)), i,  i, comm)
+		reqs[i] = MPI.Irecv!(Array{Float64,4}(undef,(2,4,3,n)), i,  i, comm)
 	end
 
 	for data_index in 1:n:n_samples
@@ -162,7 +174,7 @@ function head()
 		MPI.Send(to_send, worker_i, worker_i+10000, comm) # data, dst, id, comm 
 
 		# Replace request for this worker with appropriate section of result array 
-		reqs[worker_i] = MPI.Irecv!(view(output,:,:,data_index:data_index+n), worker_i, worker_i, comm)
+		reqs[worker_i] = MPI.Irecv!(view(output,:,:,:,data_index:data_index+n), worker_i, worker_i, comm)
 	end
 
 	# Wait for last worker results 
@@ -176,9 +188,10 @@ function head()
 	MPI.Waitall!(kills)
 
 	# Save output 
-	output = output[:,:,1:n_samples] # discard any trailing -1 
+	output = output[:,:,:,1:n_samples] # discard any trailing -1 
 	fileName = "data/"*parsed_args["data_prefix"]*"/perplex_out_$(parsed_args["geotherm_bin"]).h5"
-	h5write(fileName, "results", output)
+	h5write(fileName, "results", output[1,:,:,:])
+	h5write(fileName, "errors", output[2,:,:,:])
 end 
 
 

@@ -204,6 +204,9 @@ so that resulting geotherm ranges in data sent to perplex will be of equal size
 function binBoundaries(n::Int)
     dmin = minimum(depth[:,1])
     dmax = maximum(depth[:,1])
+    if n == 1
+        return range(dmin, length=2, stop=dmax)
+    end 
     to_add = (n - 1 - (dmax - dmin)%(n-1))/2 # add this to top and bottom so that (dmax - dmin)%(n-1) = 0 and we have even-sized bins
     return LinRange(dmin-to_add, dmax+to_add, n)
 end
@@ -215,7 +218,7 @@ Return a touple of weights and lists of seismic values (rho, vp, vp/vs)
 From Crust1.0
 Also resample (using weights corresponding to area of each 1x1 degree square).
 """
-function getAllSeismic(layer::Integer; age::Number=NaN, n=50000)
+function getAllSeismic(layer::Integer; age::Number=NaN, n=50000, resample::Bool=true)
     if !(layer in [6,7,8])
         throw(ArgumentError("Layer must be 6, 7, or 8 (crysteline Crust1 layers)"))
     end
@@ -241,21 +244,23 @@ function getAllSeismic(layer::Integer; age::Number=NaN, n=50000)
 
     (vp, vs, rho) = find_crust1_seismic(lats, longs, layer)
 
-    k = latLongWeight.(lats)
-    # Probability of keeping a given data point when sampling:
-    # We want to select roughly one-fith of the full dataset in each re-sample,
-    # which means an average resampling probability <p> of about 0.2
-    p = 1.0 ./ ((k .* median(5.0 ./ k)) .+ 1.0)
+    if resample 
+        k = latLongWeight.(lats)
+        # Probability of keeping a given data point when sampling:
+        # We want to select roughly one-fith of the full dataset in each re-sample,
+        # which means an average resampling probability <p> of about 0.2
+        p = 1.0 ./ ((k .* median(5.0 ./ k)) .+ 1.0)
 
-    # Resample! 
-    samples = hcat(rho, vp, vs, geotherms)
-    sigma = hcat(rho .* relerr_rho, vp .* relerr_vp, vs .* relerr_vs, geotherms .* relerr_tc1)
-    resampled = bsresample(samples, sigma, n, p)
+        # Resample! 
+        samples = hcat(rho, vp, vs, geotherms)
+        sigma = hcat(rho .* relerr_rho, vp .* relerr_vp, vs .* relerr_vs, geotherms .* relerr_tc1)
+        resampled = bsresample(samples, sigma, n, p)
 
-    rho = resampled[:,1]
-    vp = resampled[:,2]
-    vs = resampled[:,3]
-    geotherms = resampled[:,4]
+        rho = resampled[:,1]
+        vp = resampled[:,2]
+        vs = resampled[:,3]
+        geotherms = resampled[:,4]
+    end
 
     return (rho, vp, vp ./ vs, geotherms)
 end

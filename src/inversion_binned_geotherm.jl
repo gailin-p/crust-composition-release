@@ -1,6 +1,5 @@
 """ 
-Inversion for binned geotherm 
-(Eventually refactor for all inversions?)
+Inversion for binned geotherm (works for not binned too; treats like nbins=1)
 
 """
 
@@ -107,7 +106,7 @@ p = plot(size=(800,600));
 
 layer_names = ["upper", "middle", "lower"]
 for i in 1:3 # layers 
-	plot!(p, ages, age_results[i,:], yerror=age_1std[i,:], label=layer_names[i])
+	plot!(p, ages, age_results[i,:], yerror=age_1std[i,:], label=layer_names[i], markerstrokecolor=:auto)
 end 
 
 plot!(p, [200], [66.0], seriestype=:scatter, marker=7,markershape=:star5, markercolor=:blue, label="Upper of R & F")

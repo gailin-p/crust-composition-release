@@ -7,9 +7,13 @@ using MultivariateStats
 using StatGeochem
 using StatsBase
 using Interpolations
+using ProgressMeter
+using DelimitedFiles
+using HDF5
 
 include("../bin.jl") # TODO use Brenhin's version (bin_bsr with nresamples=0)
 include("crustDistribution.jl")
+include("config.jl")
 
 prop_labels = ["rho,kg/m3","vp,km/s","vp/vs"] # properties in this order
 
@@ -21,13 +25,15 @@ struct Norm
 	mean::Float64
 end 
 
+abstract type AbstractModel end
+
 """
     InversionModel 
 Store information for inverting observed data according to perplex data for samples 
 # Includes: PCA, mean/std for normalizing inputs, relationship between PCA and comp
 # Different models for each inversion (upper != middle != lower)
 """
-struct InversionModel
+struct  InversionModel <: AbstractModel
 	# PCA of seismic vars 
 	rhoNorm::Norm
 	vpNorm::Norm
@@ -36,21 +42,43 @@ struct InversionModel
 	# Binned relationship between PCA and composition
 	interp::AbstractInterpolation # Interpolation from PCA to element of interest 
 	error_interp::AbstractInterpolation # Interpolation from PCA to standard deviation of elt of interest 
+	# The bins themselves 
+	c::AbstractRange
+	m::Array{Float64,1}
+	e::Array{Float64,1}
 	# Original data 
 	seismic::Array{Float64,1} # Seismic data of perplex samples post-pca. length n 
 	comp::Array{Float64,1} # composition of element of interest. length n. 
 end
+
+"""
+	BadModel
+A place-holder model for when we didn't have enough data 
+"""
+struct BadModel <: AbstractModel end 
+
+"""
+All the models for a dataset. 
+If binned, each of upper, middle, lower will have nbins models. 
+"""
+struct ModelCollection
+	upper::Array{AbstractModel,1}
+	middle::Array{AbstractModel,1}
+	lower::Array{AbstractModel,1}
+	bins::AbstractRange
+	nbins::Integer
+end  
 
 function normalize(norm::Norm, arr::Array)
 	return (arr .- norm.mean) ./ norm.std
 end
 
 """
-    InversionModel(ign, seismic)
+    AbstractModel(ign, seismic)
 `ign` is size (n, 2) where columns are index, element of interest 
 `seismic` is size (n, 4) where columns are index, rho, vp, vp/vs *at this layer!*
 """
-function InversionModel(ign::Array{Float64, 2}, seismic::Array{Float64, 2})
+function AbstractModel(ign::Array{Float64, 2}, seismic::Array{Float64, 2})
 	# Check that indices align 
 	if ign[:,1] != seismic[:,1]
 		#println(hcat(ign[1:100,1], seismic[1:100,1]))
@@ -68,6 +96,12 @@ function InversionModel(ign::Array{Float64, 2}, seismic::Array{Float64, 2})
     # Discard NaN values 
     test = .!(isnan.(samples[1,:]))
     samples = samples[:,test] 
+
+    # Do we have enough valid perplex results in this bin? 
+    if size(samples,2) < 5 # Todo is this a reasonable cutoff? 
+    	println("Warning: not enough samples to build model for this layer and geotherm.")
+    	return BadModel()
+    end
 
     # PCA
     pca = fit(PCA, samples)
@@ -92,7 +126,7 @@ function InversionModel(ign::Array{Float64, 2}, seismic::Array{Float64, 2})
     itp_e = scale(itp_e, c) # Scale by bin centers
     itp_e = extrapolate(itp_e, Flat()) # TODO gailin - why is it ok to interpolate uncertainty?
 
-    return InversionModel(rhoNorm, vpNorm, vpvsNorm, pca, itp, itp_e, pca_samples, ign[:,2])
+    return InversionModel(rhoNorm, vpNorm, vpvsNorm, pca, itp, itp_e, c, m, e, pca_samples, ign[:,2][test])
 end
 
 """
@@ -127,46 +161,68 @@ function estimateComposition(model::InversionModel,
     return (m_itp, e_itp)
 end
 
+function estimateComposition(model::BadModel, 
+	rho::Array{Float64,1}, vp::Array{Float64,1}, vpvs::Array{Float64,1})
+	return (fill(NaN, length(rho)), fill(NaN, length(rho)))
+end
+
+"""
+	estimateComposition 
+
+Used when geotherm is binned (so models is a list of models, one per geotherm bin)
+"""
+function estimateComposition(models::Array{InversionModel, 1}, 
+	rho::Array{Float64,1}, vp::Array{Float64,1}, vpvs::Array{Float64,1}, geotherms::Array{Float64, 1})
+end 
+
 """
 	makeInversion(data_location)
 
 Load data for an inversion run (function expects ign csv from resampleEarthChem and subsequent perplex results)
-TODO add single-bin option. 
+TODO add single-bin option. (Maybe handled automatically now that naming convention changed in runPerplex and resampleEarthChem)
 
 Returns touple of lists of models, (upper, middle, lower), each with as many models as geotherm bins. 
 """
-function makeModels(data_location::String)
+function makeModels(data_location::String, resamplePerplex::Bool=false)
 	# Elements in ign files: index, elts, geotherm, layers. TODO add header to CSV created by resampleEarthChem
-	elements = ["index","SiO2","TiO2","Al2O3","FeO","MgO","CaO","Na2O","K2O","H2O_Total","CO2","padding", "tc1Crust","upper","middle","lower"] 
+	elements = PERPLEX_ELEMENTS
 
 	# Build models for every (geotherm bin)/layer combo 
 	filePrefix = "perplex_out_"
-	fileNames = filter(x->contains(x,"perplex_out_"), readdir("data/$(parsed_args["data_prefix"])"))
+	fileNames = filter(x->contains(x,"perplex_out_"), readdir("data/$data_location"))
 	nBins = length(fileNames)
 	bins = crustDistribution.binBoundaries(nBins)
 
 	# Models for each layer. upper[i] is model for i-th geotherm bin. 
-	upper = Array{InversionModel, 1}(undef, nBins)
-	middle = Array{InversionModel, 1}(undef, nBins)
-	lower = Array{InversionModel, 1}(undef, nBins)
+	upper = Array{AbstractModel, 1}(undef, nBins)
+	middle = Array{AbstractModel, 1}(undef, nBins)
+	lower = Array{AbstractModel, 1}(undef, nBins)
 
 	@showprogress 1 "Building models" for bin_num in 1:nBins
 		# Build models for each layer for this bin 
-		ignFile = "data/"*parsed_args["data_prefix"]*"/bsr_ignmajors_$(bin_num).csv"
+		ignFile = "data/"*data_location*"/bsr_ignmajors_$(bin_num).csv"
 		ign = readdlm(ignFile, ',')
 
 		# Read perplex results. Shape (4, 3, n), property, layer, index. 
-		perplexFile = "data/"*parsed_args["data_prefix"]*"/perplex_out_$(bin_num).h5"
+		perplexFile = "data/"*data_location*"/perplex_out_$(bin_num).h5"
 		perplexresults = h5read(perplexFile, "results")
+
+		println("For bin $(bin_num), perplex has size $(size(perplexresults)), ign has size $(size(ign))")
+
+		# Resample perplex? 
+		if resamplePerplex
+			throw(AssertionError("resampling not implemented yet srry"))
+			bsrresample() # data, sigma, nrows 
+		end 
 
 		if size(ign,1) != size(perplexresults,3)
 			throw(AssertionError("Size of ign does not match size of perplex results from $(fileName)"))
 		end 
 
 		# Build models. use SiO2 (index 2 in ign). 
-		upper[bin_num] = InversionModel(ign[:,1:2], Array(perplexresults[:,1,:]'))
-		middle[bin_num] = InversionModel(ign[:,1:2], Array(perplexresults[:,2,:]'))
-		lower[bin_num] = InversionModel(ign[:,1:2], Array(perplexresults[:,3,:]'))
+		upper[bin_num] = AbstractModel(ign[:,1:2], Array(perplexresults[:,1,:]'))
+		middle[bin_num] = AbstractModel(ign[:,1:2], Array(perplexresults[:,2,:]'))
+		lower[bin_num] = AbstractModel(ign[:,1:2], Array(perplexresults[:,3,:]'))
 	end 
 
 	return (upper, middle, lower)

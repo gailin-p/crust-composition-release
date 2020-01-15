@@ -134,7 +134,7 @@ for i = 1:length(RESAMPLED_ELEMENTS)
 end
 
 # Fix any resampled below 0 (only for elements, not for lat/long/age)
-outtable[:,2:end-4][outtable[:,2:end-4] .<= 0] .= 0
+outtable[:,2:length(COMPOSITION_ELEMENTS)+1] = map(x->max(0.0, x), outtable[:,2:length(COMPOSITION_ELEMENTS)+1])
 
 outtable[:,1] = Array(1:size(outtable,1)) # Set indices
 
