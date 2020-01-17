@@ -14,3 +14,12 @@ export RESAMPLED_ELEMENTS
 # All elements output by resampleEarthChem and sent to perplex 
 PERPLEX_ELEMENTS = vcat(["index"], RESAMPLED_ELEMENTS, "geotherm", "upper", "middle", "lower")
 export PERPLEX_ELEMENTS
+
+UPPER="upper"
+MIDDLE="middle"
+LOWER="lower"
+LAYER_NAMES = (UPPER, MIDDLE, LOWER)
+export LAYER_NAMES
+
+# ign file 
+IGN_FILE = "igncn1.mat"

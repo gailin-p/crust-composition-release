@@ -218,7 +218,7 @@ Return a touple of weights and lists of seismic values (rho, vp, vp/vs)
 From Crust1.0
 Also resample (using weights corresponding to area of each 1x1 degree square).
 """
-function getAllSeismic(layer::Integer; age::Number=NaN, n=50000, resample::Bool=true)
+function getAllSeismic(layer::Integer; age::Number=NaN, n::Integer=50000, resample::Bool=true)
     if !(layer in [6,7,8])
         throw(ArgumentError("Layer must be 6, 7, or 8 (crysteline Crust1 layers)"))
     end

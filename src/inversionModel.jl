@@ -10,10 +10,12 @@ using Interpolations
 using ProgressMeter
 using DelimitedFiles
 using HDF5
+using MAT 
 
 include("../bin.jl") # TODO use Brenhin's version (bin_bsr with nresamples=0)
 include("crustDistribution.jl")
 include("config.jl")
+include("utilities.jl")
 
 prop_labels = ["rho,kg/m3","vp,km/s","vp/vs"] # properties in this order
 
@@ -25,13 +27,19 @@ struct Norm
 	mean::Float64
 end 
 
+"""
+Allow plug-in of different model types. 
+Every model must implement a constructor that takes ign and perplex data, 
+and an estimateComposition method that takes test seismic data, so that 
+any model can be interchangably used in a ModelCollection. 
+"""
 abstract type AbstractModel end
 
 """
     InversionModel 
 Store information for inverting observed data according to perplex data for samples 
-# Includes: PCA, mean/std for normalizing inputs, relationship between PCA and comp
-# Different models for each inversion (upper != middle != lower)
+Includes: PCA, mean/std for normalizing inputs, relationship between PCA and comp
+Different models for each inversion (upper != middle != lower) and geotherm bin. 
 """
 struct  InversionModel <: AbstractModel
 	# PCA of seismic vars 
@@ -58,13 +66,11 @@ A place-holder model for when we didn't have enough data
 struct BadModel <: AbstractModel end 
 
 """
-All the models for a dataset. 
-If binned, each of upper, middle, lower will have nbins models. 
+All the models for a dataset/layer combo. (so one of these for each upper/middle/lower) 
+If binned, models will contain nbins models. 
 """
 struct ModelCollection
-	upper::Array{AbstractModel,1}
-	middle::Array{AbstractModel,1}
-	lower::Array{AbstractModel,1}
+	models::Dict{String,Array{AbstractModel,1}}
 	bins::AbstractRange
 	nbins::Integer
 end  
@@ -74,11 +80,147 @@ function normalize(norm::Norm, arr::Array)
 end
 
 """
-    AbstractModel(ign, seismic)
+	RangeModel
+A model which inverts by returning the mean and std of the compositions of all 
+perplex samples within some tolerance of the test sample rho, vp, and vpvs.  
+Compare to InversionModel, which uses a binned relationship between PCA and comp
+"""
+mutable struct RangeModel <: AbstractModel
+	# Sorted data. Lookups are sorted arrays, perms are indices back to unsorted data. 
+	perms::Tuple{Array{Float64,1}, Array{Float64,1}, Array{Float64,1}}
+	lookups::Tuple{Array{Float64,1}, Array{Float64,1}, Array{Float64,1}}
+	# Relative size of bin for each seismic data type 
+	errors::Tuple{Float64,Float64,Float64}
+	# Original data 
+	seismic::Array{Float64,2} # shape (n,3). Columns are rho, vp, vpvs 
+	comp::Array{Float64,2}
+end 
+
+"""
+	Explicitly set the error ranges for a RangeModel 
+"""
+function RangeModel(ign::Array{Float64, 2}, seismic::Array{Float64, 2}, errors::Tuple{Float64,Float64,Float64})
+	model = RangeModel(ign, seismic)
+	model.errors = errors 
+	return model 
+end 
+
+"""
+    RangeModel(ign, seismic)
 `ign` is size (n, 2) where columns are index, element of interest 
 `seismic` is size (n, 4) where columns are index, rho, vp, vp/vs *at this layer!*
 """
-function AbstractModel(ign::Array{Float64, 2}, seismic::Array{Float64, 2})
+function RangeModel(ign::Array{Float64, 2}, seismic::Array{Float64, 2})
+	if (seismic[:,1] != 1:size(seismic,1)) | (ign[:,1] != 1:size(seismic,1))
+		throw(AssertionError("Expected indicies of seismic and ign data to be 1 through n, with none missing"))
+	end 
+
+	rho_perm = sortperm(seismic[:,2])
+	rho_lookup = seismic[:,2][rho_perm]
+
+	vp_perm = sortperm(seismic[:,3])
+	vp_lookup = seismic[:,3][vp_perm]
+
+	vpvs_perm = sortperm(seismic[:,4])
+	vpvs_lookup = seismic[:,4][vpvs_perm]
+
+	# Default errors TODO I think defaults from igncn1 are too small 
+	all_errors = matread(IGN_FILE)["err2srel"]
+	errors = (all_errors["Rho"]/2, all_errors["Vp"]/2, all_errors["Vp"]/2) # TODO this is not right, but really we want std(vp/vs), and there's no easy way to get that out of std(vp) and std(vs), see https://stats.stackexchange.com/questions/58800/what-is-the-mean-and-standard-deviation-of-the-division-of-two-random-variables
+
+	#errors = (.01, .01, .01)
+
+	return RangeModel((rho_perm, vp_perm, vpvs_perm), (rho_lookup, vp_lookup, vpvs_lookup), errors, seismic, ign)
+end 
+
+"""
+	estimateComposition
+naiive implementation: search in sorted seismic lists for points within threshold. see: searchsortedfirst
+Alternative, if that's too slow: try sorting in 3d space, see GeometricalPredicates 
+"""
+function estimateComposition(model::RangeModel, 
+	rho::Array{Float64,1}, vp::Array{Float64,1}, vpvs::Array{Float64,1})
+
+	if (length(rho) != length(vp)) | (length(vp) != length(vpvs))
+		throw(AssertionError("Lengths of seismic datasets don't match"))
+	end  
+
+	results = Array{Float64, 1}(undef, length(rho))
+	result_stds = Array{Float64, 1}(undef, length(rho))
+
+	numMatched = RunningMean()
+	
+	for test_i in 1:length(rho)
+		#println("test $test_i")
+		# find bottom and top of tolerence
+		dat = (rho[test_i], vp[test_i], vpvs[test_i])
+		bottoms = dat .- dat .* model.errors 
+		tops = dat .+ dat .* model.errors 
+
+		#println("Gathering samples in seismic range from $bottoms to $tops")
+
+		# Special case: too small or too large, search won't return valid range 
+		too_small = [tops[i] < model.lookups[i][1] for i in 1:3] # any top value smaller than bottom 
+		too_large = [bottoms[i] > model.lookups[i][end] for i in 1:3] # any bottom value larger than max
+		if sum(too_small) + sum(too_large) > 0 
+			results[test_i] = NaN 
+			result_stds[test_i] = NaN 
+			#println("Warning: test sample outside of training data range.")
+			continue 
+		end 
+
+		# Look up in lookup, then match back to index using perm 
+		starts = [searchsortedfirst(model.lookups[i], bottoms[i]) for i in 1:3]
+		ends = [searchsortedfirst(model.lookups[i], tops[i]) for i in 1:3]
+		ends = ends .- 1 # searchsorted returns index of first value *larger than* query 
+		# Match back to indices 
+		indices = [model.perms[i][starts[i]:ends[i]] for i in 1:3]
+
+		# find indices agreed upon by all types of seismic data 
+		# TODO make this faster if we end up using big bins, for now assume n^2 is fine 
+		agreed = Array{Int, 1}(undef, 0)
+		for i in indices[1]
+			if (i in indices[2]) & (i in indices[3])
+				push!(agreed, Int(i))
+			end 
+		end 
+		#println("agree on $agreed")
+		# How many were matched? 
+		mean!(numMatched, length(agreed))
+
+		# look up compositions of agreed upon indices 
+		compositions = model.comp[agreed, 2]
+		results[test_i] = nanmean(compositions)
+		result_stds[test_i] = nanstd(compositions)
+
+
+		# Sanity check: mean seismic data for agreed-upon indices better be within error of test val.
+		matched_rho = nanmean(model.seismic[agreed, 2])
+		matched_vp = nanmean(model.seismic[agreed, 3])
+		matched_vpvs = nanmean(model.seismic[agreed, 4])
+		#println("matched rho, vp, vpvs = $matched_rho, $matched_vp, $matched_vpvs")
+		if (matched_rho > tops[1]) | (matched_rho < bottoms[1]) | 
+			(matched_vp > tops[2]) | (matched_vp < bottoms[2]) | 
+			(matched_vpvs > tops[3]) | (matched_vpvs < bottoms[3]) 
+			throw(AssertionError("Model matched samples which don't have seismic data close to test."))
+		end 
+	end
+
+	println("reporting from estimation function: 
+		Mean matched samples $(numMatched.m) for $(numMatched.n) samples tried.
+		$(sum(.! isnan.(results))) not NaN results out of $(length(rho)) inputs")
+
+	return results, result_stds
+
+end
+
+
+"""
+    InversionModel(ign, seismic)
+`ign` is size (n, 2) where columns are index, element of interest 
+`seismic` is size (n, 4) where columns are index, rho, vp, vp/vs *at this layer!*
+"""
+function InversionModel(ign::Array{Float64, 2}, seismic::Array{Float64, 2})
 	# Check that indices align 
 	if ign[:,1] != seismic[:,1]
 		#println(hcat(ign[1:100,1], seismic[1:100,1]))
@@ -161,6 +303,9 @@ function estimateComposition(model::InversionModel,
     return (m_itp, e_itp)
 end
 
+"""
+Composition estimate for a BadModel returns NaNs. 
+"""
 function estimateComposition(model::BadModel, 
 	rho::Array{Float64,1}, vp::Array{Float64,1}, vpvs::Array{Float64,1})
 	return (fill(NaN, length(rho)), fill(NaN, length(rho)))
@@ -169,21 +314,43 @@ end
 """
 	estimateComposition 
 
-Used when geotherm is binned (so models is a list of models, one per geotherm bin)
+Estimate composition using a collection of geotherm-binned models. 
 """
-function estimateComposition(models::Array{InversionModel, 1}, 
+function estimateComposition(models::ModelCollection, layer::String,
 	rho::Array{Float64,1}, vp::Array{Float64,1}, vpvs::Array{Float64,1}, geotherms::Array{Float64, 1})
+
+	if (length(rho) != length(vp)) | (length(vp) != length(vpvs))
+		throw(AssertionError("Lengths of seismic datasets don't match"))
+	end
+
+	if !(layer in LAYER_NAMES)
+		throw(AssertionError("Invalid layer, use one of $LAYER_NAMES"))
+	end
+
+	# Input and result data for all geotherm bins 
+	results = Array{Float64, 1}(undef, length(rho))
+	errors = Array{Float64, 1}(undef, length(rho))
+
+	@showprogress "Running samples" for (i, bin_bottom) in enumerate(models.bins[1:end-1])
+		# Look in ign for only the samples with geotherms in this bin 
+		bin_top = models.bins[i+1]
+		test = (geotherms .> bin_bottom) .& (geotherms .<= bin_top)
+		(means, es) = estimateComposition(models.models[layer][i], rho[test], vp[test], vpvs[test])
+		results[test] = means
+		errors[test] = es
+	end 
+
+	return (results, errors)
 end 
 
 """
-	makeInversion(data_location)
+	makeModels(data_location)
 
 Load data for an inversion run (function expects ign csv from resampleEarthChem and subsequent perplex results)
-TODO add single-bin option. (Maybe handled automatically now that naming convention changed in runPerplex and resampleEarthChem)
 
 Returns touple of lists of models, (upper, middle, lower), each with as many models as geotherm bins. 
 """
-function makeModels(data_location::String, resamplePerplex::Bool=false)
+function makeModels(data_location::String; resamplePerplex::Bool=false, modelType::DataType=InversionModel)
 	# Elements in ign files: index, elts, geotherm, layers. TODO add header to CSV created by resampleEarthChem
 	elements = PERPLEX_ELEMENTS
 
@@ -207,8 +374,6 @@ function makeModels(data_location::String, resamplePerplex::Bool=false)
 		perplexFile = "data/"*data_location*"/perplex_out_$(bin_num).h5"
 		perplexresults = h5read(perplexFile, "results")
 
-		println("For bin $(bin_num), perplex has size $(size(perplexresults)), ign has size $(size(ign))")
-
 		# Resample perplex? 
 		if resamplePerplex
 			throw(AssertionError("resampling not implemented yet srry"))
@@ -220,11 +385,11 @@ function makeModels(data_location::String, resamplePerplex::Bool=false)
 		end 
 
 		# Build models. use SiO2 (index 2 in ign). 
-		upper[bin_num] = AbstractModel(ign[:,1:2], Array(perplexresults[:,1,:]'))
-		middle[bin_num] = AbstractModel(ign[:,1:2], Array(perplexresults[:,2,:]'))
-		lower[bin_num] = AbstractModel(ign[:,1:2], Array(perplexresults[:,3,:]'))
+		upper[bin_num] = modelType(ign[:,1:2], Array(perplexresults[:,1,:]'))
+		middle[bin_num] = modelType(ign[:,1:2], Array(perplexresults[:,2,:]'))
+		lower[bin_num] = modelType(ign[:,1:2], Array(perplexresults[:,3,:]'))
 	end 
 
-	return (upper, middle, lower)
+	return ModelCollection(Dict(LAYER_NAMES[1]=>upper, LAYER_NAMES[2]=>middle, LAYER_NAMES[3]=>lower), bins, nBins)
 end 
 
