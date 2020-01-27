@@ -27,6 +27,7 @@ using Statistics
 using ProgressMeter: @showprogress
 include("crustDistribution.jl")
 include("config.jl") # constants defined here 
+include("utilities.jl")
 
 s = ArgParseSettings()
 @add_arg_table s begin
@@ -136,6 +137,9 @@ end
 # Fix any resampled below 0 (only for elements, not for lat/long/age)
 outtable[:,2:length(COMPOSITION_ELEMENTS)+1] = map(x->max(0.0, x), outtable[:,2:length(COMPOSITION_ELEMENTS)+1])
 
+# Renormalize because we'll use these as % comp later 
+normalizeComp!(view(outtable, :, 2:length(COMPOSITION_ELEMENTS)+1))
+
 outtable[:,1] = Array(1:size(outtable,1)) # Set indices
 
 # Apply geotherms. Either any old geotherm will do or we need to replicate and apply different ones.
@@ -150,7 +154,7 @@ if bins == 1
     path = "data/"*dir*"/bsr_ignmajors_1.csv"
     writedlm(path, round.(outtable, digits=5), ",")
 else # Replication and bins required! 
-    bin_boundaries = crustDistribution.binBoundaries(bins + 1)
+    bin_boundaries = crustDistribution.binBoundaries(bins)
     for (i, bin_bottom) in enumerate(bin_boundaries[1:end-1])
         bin_top = bin_boundaries[i+1]
         outtable[:,length(RESAMPLED_ELEMENTS)+2:end] = 

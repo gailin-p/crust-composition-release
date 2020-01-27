@@ -173,7 +173,7 @@ Return Array of size (n, 4), geotherm and layers for n samples.
 Used by resampleEarthChem to assign geotherms to resampled values.
 """
 function getCrustParams(bin_min::Number, bin_max::Number, n::Int; uncertain::Bool=false)
-    test = (depth[:,1] .<= bin_max) .& (depth[:,1] .> bin_min) 
+    test = (depth[:,4] .<= bin_max) .& (depth[:,4] .> bin_min) 
     bin_depth = depth[test,:]
     #println("bin has $(length(unique(bin_depth[:,1]))) samples") # Note that 88 is not in tc1 geotherms, so that bin will be smaller
     bin_weight = weights[test]
@@ -202,11 +202,12 @@ so that most bins have same # of discrete tc1 geotherm depths,
 so that resulting geotherm ranges in data sent to perplex will be of equal size
 """
 function binBoundaries(n::Int)
-    dmin = minimum(depth[:,1])
-    dmax = maximum(depth[:,1])
+    dmin = minimum(depth[:,4])
+    dmax = maximum(depth[:,4])
     if n == 1
         return range(dmin, length=2, stop=dmax)
     end 
+    n = n+1 # We need n+1 boundaries to make n bins 
     to_add = (n - 1 - (dmax - dmin)%(n-1))/2 # add this to top and bottom so that (dmax - dmin)%(n-1) = 0 and we have even-sized bins
     return LinRange(dmin-to_add, dmax+to_add, n)
 end
@@ -214,9 +215,10 @@ export binBoundaries
 
 """
     getAllSeismic()
-Return a touple of weights and lists of seismic values (rho, vp, vp/vs)
+Return a touple of weights and lists of seismic values [rho, vp, vp/vs, geotherm]
 From Crust1.0
-Also resample (using weights corresponding to area of each 1x1 degree square).
+if resample, resample (using weights corresponding to area of each 1x1 degree square) to n samples 
+otherwise, just return data for each lat/long. (n unused, answer unweighted)
 """
 function getAllSeismic(layer::Integer; age::Number=NaN, n::Integer=50000, resample::Bool=true)
     if !(layer in [6,7,8])
@@ -266,3 +268,4 @@ function getAllSeismic(layer::Integer; age::Number=NaN, n::Integer=50000, resamp
 end
 
 end
+export crustDistribution
