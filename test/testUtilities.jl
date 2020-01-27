@@ -13,4 +13,20 @@ function testRunningMean()
 	end 
 end 
 
+function testNormalize()
+	a = [1 2 3; .1 .2 .3; .5 .5 .5]
+	normalizeComp!(a)
+
+	for row in 1:size(a,1)
+		if abs(sum(a[row,:]) - 100) > 1e-13
+			println(sum(a[row,:]))
+			throw(AssertionError("Row does not sum to 100"))
+		end 
+	end 
+	println("Normalize test passed")
+end
+
 testRunningMean()
+
+testNormalize()
+

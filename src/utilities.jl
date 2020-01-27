@@ -22,3 +22,13 @@ function mean!(running::RunningMean, new::Number)
 	running.m = (running.n*running.m + new)/(running.n + 1)
 	running.n += 1 
 end 
+
+"""
+Normalize each row of input matrix (in place)
+"""
+function normalizeComp!(a::AbstractArray{Float64, 2})
+	sums = sum(a,dims=2)
+	for row in 1:size(a,1)
+		a[row,:] .= (a[row,:] ./ sums[row]) .* 100
+	end 
+end 
