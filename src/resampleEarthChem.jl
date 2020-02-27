@@ -57,7 +57,33 @@ parsed_args = parse_args(ARGS, s)
 
 # Read in mat file
 ign = matread(parsed_args["data"])
-ign["elements"] = string.(ign["elements"]) # Since .mat apparently can"t tell the difference between "B" and "b"
+
+# Calculate H2O_Total if not present or all NaN
+if (! contains(keys(ign), "H2O_Total")) || (sum(isnan.(ign["H2O_Total"])) == length(ign["H2O_Total"]))
+    println("Calculating H2O_Total from H2O, H2O_Plus, H2O_Minus, and Loi")
+    ign["H2O_Total"] = fill(NaN, (length(ign["H2O"]),1))
+    println(size(ign["H2O"]))
+    println(size(ign["H2O_Total"]))
+
+    # If H2O exists, use that 
+    h2Ogood = .~(isnan.(ign["H2O"]))
+    println("Using $(sum(h2Ogood)) H2O values")
+    ign["H2O_Total"][h2Ogood] .= ign["H2O"][h2Ogood]
+
+    # Otherwise, if H2O_Plus and H2O_Minus, use sum of those 
+    plusminus = (.~h2Ogood) .& (.~(isnan.(ign["H2O_Plus"]))) .& (.~(isnan.(ign["H2O_Minus"])))
+    println("Using $(sum(plusminus)) H2O_Plus and H2O_Minus values")
+    ign["H2O_Total"][plusminus] .= ign["H2O_Minus"][plusminus] .+ ign["H2O_Plus"][plusminus]
+
+    # Otherwise, partition Loi into CO2 and H2O based on ratio in rest of data set 
+    ratio = nanmean(ign["H2O"][h2Ogood] ./ (ign["CO2"][h2Ogood] + ign["H2O"][h2Ogood])) # h2O out of total volatiles
+    loi = (.~plusminus) .& (.~h2Ogood) .& (.~(isnan.(ign["Loi"])))
+    println("Using $(sum(loi)) Loi values, partitioning $(ratio) of volatiles into H2O")
+    ign["H2O_Total"][loi] = ign["Loi"][loi] .* ratio 
+    ign["CO2"][loi] .= ign["Loi"][loi] .* (1-ratio)
+
+    println("$(sum(.~(isnan.(ign["H2O_Total"])))) not-nan H2O_Total values from $(sum(h2Ogood) + sum(plusminus) + sum(loi)) other data vals")
+end 
 
 # List of elements we want to resample export (primarily element oxides)
 # Lat, long and age are unused, but export for visualization or reference. 
@@ -84,13 +110,13 @@ ign["err"]["Age"][t] .= 50
 ign["FeO"] = feoconversion.(ign["FeO"], ign["Fe2O3"], ign["FeOT"], ign["Fe2O3T"])
 
 # Reject samples with suspicious anhydrous normalizations
-anhydrousnorm = Array{Bool,1}(undef, length(ign[RESAMPLED_ELEMENTS[1]]))
+anhydrousnorm = fill(false, length(ign[RESAMPLED_ELEMENTS[1]]))
 for i in 1:length(ign[RESAMPLED_ELEMENTS[1]]) # for every sample 
     elts = [ign[elt][i] for elt in COMPOSITION_ELEMENTS[1:8]] # sum of percents for every sample 
     total = sum(elts)
-    anhydrousnorm[i] = (total < 101) & (total > 90) # is this sample reasonable?
+    anhydrousnorm[i] = (total < 101) & (total > 90) # is this sample reasonable? (all NaNs will return false)
 end 
-println("Throwing away $(length(ign[RESAMPLED_ELEMENTS[1]]) - sum(anhydrousnorm)) samples because of suspicious anhydrous normalizations")
+println("Throwing away $(length(ign[RESAMPLED_ELEMENTS[1]]) - sum(anhydrousnorm)) samples because of suspicious anhydrous normalizations or all NaN values")
 
 for elt in RESAMPLED_ELEMENTS 
     ign[elt] = ign[elt][anhydrousnorm]
