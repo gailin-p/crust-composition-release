@@ -54,6 +54,7 @@ s = ArgParseSettings()
         default = 1
 end
 parsed_args = parse_args(ARGS, s)
+writeOptions("data/"*parsed_args["data_prefix"]*"/resampleEarthChem_options.csv", parsed_args)
 
 # Read in mat file
 ign = matread(parsed_args["data"])

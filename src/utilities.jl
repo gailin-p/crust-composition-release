@@ -1,4 +1,5 @@
 using Statistics
+using DelimitedFiles 
 
 
 """
@@ -32,3 +33,31 @@ function normalizeComp!(a::AbstractArray{Float64, 2})
 		a[row,:] .= (a[row,:] ./ sums[row]) .* 100
 	end 
 end 
+
+"""
+Write options to option file
+"""
+function writeOptions(filename, options)
+	out = fill("", (length(keys(options)), 2))
+	for (k, key) in enumerate(keys(options))
+		out[k, 1] = key 
+		out[k, 2] = string(options[key])
+	end 
+	writedlm(filename, out, ",")
+end 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

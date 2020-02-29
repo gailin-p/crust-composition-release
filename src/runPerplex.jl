@@ -14,6 +14,7 @@ using DelimitedFiles
 using StatGeochem
 using HDF5
 include("config.jl")
+include("utilities.jl")
 
 s = ArgParseSettings()
 @add_arg_table s begin
@@ -33,6 +34,10 @@ s = ArgParseSettings()
     	help = "Number of perplex bin if using bins this run. (Just controls which sample csv we look for)"
         arg_type = Int
         default = 1
+    "--perplex_dataset"
+    	help = "Which perplex thermodynamic dataset to use? eg hpha02ver.dat or hp02ver.dat"
+    	arg_type = String
+    	default = "hpha02ver.dat"
 end 
 parsed_args = parse_args(ARGS, s)
 perplex = parsed_args["perplex"]
@@ -49,7 +54,7 @@ sample_size = length(PERPLEX_ELEMENTS) # number of columns in ign per sample
 
 # General perplex options 
 exclude = ""
-dataset = "hpha02ver.dat"
+dataset = parsed_args["perplex_dataset"]
 dpdz = 2900. * 9.8 / 1E5 * 1E3
 # For now, use fluid and throw away results with NaN or 0 seismic properties. 
 solutions = "O(HP)\nOpx(HP)\nOmph(GHP)\nGt(HP)\noAmph(DP)\nGlTrTsPg\nT\nB\nAnth\nChl(HP)\nBio(TCC)\nMica(CF)\nCtd(HP)\nIlHm(A)\nSp(HP)\nSapp(HP)\nSt(HP)\nfeldspar\nDo(HP)\nF\n"
@@ -122,9 +127,9 @@ function worker()
             lower = (pressure .> p_layers[2]) .& (pressure .<= p_layers[3])
             for prop_i in 1:length(prop_labels)
             	prop = prop_labels[prop_i]
-            	results[1,prop_i+1,1,i] = nanmean(seismic[prop][upper])
-            	results[1,prop_i+1,2,i] = nanmean(seismic[prop][middle])
-            	results[1,prop_i+1,3,i] = nanmean(seismic[prop][lower])
+            	results[1,prop_i+1,1,i] = 1/(nanmean(1 ./ seismic[prop][upper]))
+            	results[1,prop_i+1,2,i] = 1/(nanmean(1 ./ seismic[prop][middle]))
+            	results[1,prop_i+1,3,i] = 1/(nanmean(1 ./ seismic[prop][lower]))
             	# Error 
             	results[2,prop_i+1,1,i] = nanstd(seismic[prop][upper])
             	results[2,prop_i+1,2,i] = nanstd(seismic[prop][middle])
@@ -145,6 +150,7 @@ Currently does not expect/allow worker failure
 """
 function head()
 	println("head")
+	writeOptions("data/"*parsed_args["data_prefix"]*"/runPerplex_options_$(parsed_args["geotherm_bin"]).csv", parsed_args)
 	# Load data used by head 
 	fileName = "data/"*parsed_args["data_prefix"]*"/bsr_ignmajors_$(parsed_args["geotherm_bin"]).csv"
 	ign = readdlm(fileName, ',')
