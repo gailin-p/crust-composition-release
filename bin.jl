@@ -44,7 +44,6 @@ function bin(x,y,min,max,nbins)
     averages=fill(NaN,nbins)
     errors=fill(NaN,nbins)
     xerrors=fill(NaN,nbins)
-    ydevs = fill(NaN,nbins)
 
     binwidth=(max-min)/nbins
     binedges=range(min, stop=max, length=nbins+1)
@@ -56,7 +55,7 @@ function bin(x,y,min,max,nbins)
         errors[i]=nanstd(y[test])
         xerrors[i]=bincenters[i] - nanmean(x[test])
     end
-    return bincenters, averages, errors, ydevs
+    return bincenters, averages, errors
 end
 
 export bin

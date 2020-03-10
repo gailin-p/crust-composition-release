@@ -25,35 +25,20 @@ nlong = length(long_range)
 
 # For resampling 
 uncertainty_dat = matread("igncn1.mat")["err2srel"]
-relerr_rho = uncertainty_dat["Rho"]/2
-relerr_vp = uncertainty_dat["Vp"]/2
-relerr_vs = uncertainty_dat["Vs"]/2
 relerr_tc1 = uncertainty_dat["tc1Crust"]/2
-relerr_crust = uncertainty_dat["Crust"]/2 # for crust1.0
+
+# TODO what's a reasonable lat/long error for crust 1.0? For now, use 1 deg lat/long 
+err_latlong = 1.0
 
 # Exports 
-depth = Array{Float64, 2} # n rows, 4 columns (upper, middle, lower, geotherm)
+depth = Array{Float64, 2} # n rows, 4 columns (geotherm, upper, middle, lower)
 export depth
 weights = Array{Float64, 1} # n rows, weight for choosing each row
 export weights
-ages = Array{Float64, 1} # n rows, age of lat/long for this row 
-export ages
 
 # Lats and longs where both tc1 (so age) and crust1 are defined 
 all_lats = Array{Float64, 1} # n rows, age of lat/long for this row 
 all_longs = Array{Float64, 1} # n rows, age of lat/long for this row 
-
-
-all_ages = [ NaN  NaN  NaN
-                25    0   50
-               150   50  250
-               395  250  540
-               695  540  850
-               975  850 1100
-              1400 1100 1700
-              2100 1700 2500
-              2750 2500 3000
-              3250 3000 3500] # From tc1.jl, bins for ages of crust according to tc1 
 
 """
     latLongWeight(lat, long)
@@ -75,7 +60,6 @@ function __init__()
         d = load(dataPath)
         global depth = d["depth"]
         global weights = d["weights"]
-        global ages = d["ages"]
         global all_lats = d["lats"]
         global all_longs = d["longs"]
     else
@@ -109,13 +93,14 @@ end
 
 """Get thickness and depths
 This doesn't work on Discovery (requires ImageCore, ImageMagick, which are broken)
-So save to a file, then use __init__() to read that file.
+So save to a file, then use __init__() to read that file
+TODO: i think this is now fixed, so can dispense w this overhead 
 """
 function loadAndSaveCrust1()
     (lats, longs) = latsLongs()
 
     # Get depths.
-    global depth = find_tc1_crust(lats, longs)
+    global depth = find_tc1_crust(lats, longs) # Geotherm
     for layer in [6,7,8] # upper, middle, lower
         d = [-1*n for n in find_crust1_base(lats, longs, layer)]
         depth = hcat(depth,d)
@@ -127,15 +112,14 @@ function loadAndSaveCrust1()
     lats = lats[test[:]] # latitudes for values we're keeping
     longs = longs[test[:]] 
 
-    # get ages 
-    global ages = find_tc1_age(lats, longs)[1]
-
     global weights = latLongWeight.(lats)
 
     global all_lats = lats 
     global all_longs = longs 
 
-    save(dataPath,"depth",depth, "weights", weights, "ages", ages, "lats", lats, "longs", longs)
+    global err_latlong = err_latlong
+
+    save(dataPath,"depth",depth, "weights", weights, "lats", lats, "longs", longs)
 end
 
 """
@@ -207,62 +191,10 @@ function binBoundaries(n::Int)
     if n == 1
         return range(dmin, length=2, stop=dmax)
     end 
+    n = n + 1 # need n+1 boundaries for n bins 
     to_add = (n - 1 - (dmax - dmin)%(n-1))/2 # add this to top and bottom so that (dmax - dmin)%(n-1) = 0 and we have even-sized bins
     return LinRange(dmin-to_add, dmax+to_add, n)
 end
 export binBoundaries 
-
-"""
-    getAllSeismic()
-Return a touple of weights and lists of seismic values (rho, vp, vp/vs)
-From Crust1.0
-Also resample (using weights corresponding to area of each 1x1 degree square).
-"""
-function getAllSeismic(layer::Integer; age::Number=NaN, n::Integer=50000, resample::Bool=true)
-    if !(layer in [6,7,8])
-        throw(ArgumentError("Layer must be 6, 7, or 8 (crysteline Crust1 layers)"))
-    end
-    if !((age in all_ages[:,1]) | isnan(age))
-        throw(ArgumentError("Age must be one of the ages returned by tc1"))
-    end
-
-    global all_lats # Lats where both tc1 and crust1.0 defined 
-    global all_longs
-    global depth
-    global ages
-
-    if !isnan(age) # filter for this age bin 
-        test = ages .== age
-        lats = all_lats[test]
-        longs = all_longs[test]
-        geotherms = depth[test,4]
-    else 
-        lats = all_lats 
-        longs = all_longs 
-        geotherms = depth[:,4]
-    end 
-
-    (vp, vs, rho) = find_crust1_seismic(lats, longs, layer)
-
-    if resample 
-        k = latLongWeight.(lats)
-        # Probability of keeping a given data point when sampling:
-        # We want to select roughly one-fith of the full dataset in each re-sample,
-        # which means an average resampling probability <p> of about 0.2
-        p = 1.0 ./ ((k .* median(5.0 ./ k)) .+ 1.0)
-
-        # Resample! 
-        samples = hcat(rho, vp, vs, geotherms)
-        sigma = hcat(rho .* relerr_rho, vp .* relerr_vp, vs .* relerr_vs, geotherms .* relerr_tc1)
-        resampled = bsresample(samples, sigma, n, p)
-
-        rho = resampled[:,1]
-        vp = resampled[:,2]
-        vs = resampled[:,3]
-        geotherms = resampled[:,4]
-    end
-
-    return (rho, vp, vp ./ vs, geotherms)
-end
 
 end

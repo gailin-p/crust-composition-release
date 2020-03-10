@@ -23,9 +23,10 @@ seismic[:,2] = [2000,1500,1950,2100,2010] # 2 test populations: one within 10% o
 seismic[:,3] = [2, 1.5, 1.95, 2.1, 2.010]
 seismic[:,4] = [2, 1.5, 0.5, 2.1, 2.010]  # 3 should be excluded from population 2 based on this value 
 
+# 10% rel err 
+errors = (.1, .1, .1).*(mean(seismic[:,2]), mean(seismic[:,3]), mean(seismic[:,4]))
 
-
-myModel = RangeModel(ign, seismic, (.1, .1, .1))
+myModel = RangeModel(ign, seismic, errors)
 
 # One with many samples, one with one sample, one too small, one too large 
 means, errs = estimateComposition(myModel, [2000., 1000., 1600., 8000], [2.1, 1., 1.5, 8], [2., 1., 1.6, 8])

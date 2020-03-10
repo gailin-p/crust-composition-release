@@ -89,19 +89,23 @@ mutable struct RangeModel <: AbstractModel
 	# Sorted data. Lookups are sorted arrays, perms are indices back to unsorted data. 
 	perms::Tuple{Array{Float64,1}, Array{Float64,1}, Array{Float64,1}}
 	lookups::Tuple{Array{Float64,1}, Array{Float64,1}, Array{Float64,1}}
-	# Relative size of bin for each seismic data type 
+	# Size of bin for each seismic data type 
 	errors::Tuple{Float64,Float64,Float64}
 	# Original data 
-	seismic::Array{Float64,2} # shape (n,3). Columns are rho, vp, vpvs 
-	comp::Array{Float64,2}
+	seismic::Array{Float64,2} # shape (n,4). Columns are index, rho, vp, vpvs 
+	comp::Array{Float64,2} # shape (n, n_compositions + 1). Columns are index, wt % major elements 
 end 
+
+function resultSize(model::RangeModel)
+	return size(model.comp,2)-1
+end
 
 """
 	Explicitly set the error ranges for a RangeModel 
 """
 function RangeModel(ign::Array{Float64, 2}, seismic::Array{Float64, 2}, errors::Tuple{Float64,Float64,Float64})
 	model = RangeModel(ign, seismic)
-	model.errors = errors 
+	model.errors = errors .* (nanmean(model.lookups[1]), nanmean(model.lookups[2]), nanmean(model.lookups[2]))
 	return model 
 end 
 
@@ -115,6 +119,11 @@ function RangeModel(ign::Array{Float64, 2}, seismic::Array{Float64, 2})
 		throw(AssertionError("Expected indicies of seismic and ign data to be 1 through n, with none missing"))
 	end 
 
+	# Don't consider samples with any nan values 
+	good = ((.~ isnan.(sum(ign,dims=2))) .& (.~(isnan.(sum(seismic,dims=2)))))[:] 
+	ign = ign[good,:]
+	seismic = seismic[good,:]
+
 	rho_perm = sortperm(seismic[:,2])
 	rho_lookup = seismic[:,2][rho_perm]
 
@@ -125,10 +134,11 @@ function RangeModel(ign::Array{Float64, 2}, seismic::Array{Float64, 2})
 	vpvs_lookup = seismic[:,4][vpvs_perm]
 
 	# Default errors TODO I think defaults from igncn1 are too small 
-	all_errors = matread(IGN_FILE)["err2srel"]
-	errors = (all_errors["Rho"]/2, all_errors["Vp"]/2, all_errors["Vp"]/2) # TODO this is not right, but really we want std(vp/vs), and there's no easy way to get that out of std(vp) and std(vs), see https://stats.stackexchange.com/questions/58800/what-is-the-mean-and-standard-deviation-of-the-division-of-two-random-variables
-
-	#errors = (.01, .01, .01)
+	#all_errors = matread(IGN_FILE)["err2srel"]
+	#errors = (all_errors["Rho"]/2, all_errors["Vp"]/2, all_errors["Vp"]/2) # TODO this is not right, but really we want std(vp/vs), and there's no easy way to get that out of std(vp) and std(vs), see https://stats.stackexchange.com/questions/58800/what-is-the-mean-and-standard-deviation-of-the-division-of-two-random-variables
+	#errors = errors .* (mean(rho_lookup), mean(vp_lookup), mean(vpvs_lookup))
+	
+	errors = (.05, .05, .05) .* (nanmean(rho_lookup), nanmean(vp_lookup), nanmean(vpvs_lookup))
 
 	return RangeModel((rho_perm, vp_perm, vpvs_perm), (rho_lookup, vp_lookup, vpvs_lookup), errors, seismic, ign)
 end 
@@ -145,8 +155,9 @@ function estimateComposition(model::RangeModel,
 		throw(AssertionError("Lengths of seismic datasets don't match"))
 	end  
 
-	results = Array{Float64, 1}(undef, length(rho))
-	result_stds = Array{Float64, 1}(undef, length(rho))
+	results = fill(NaN, (length(rho), size(model.comp,2)-1))
+	result_stds = fill(NaN, (length(rho), size(model.comp,2)-1))
+	#results_indices = fill([], length(rho)) # list of lists of indices for each sample 
 
 	numMatched = RunningMean()
 	
@@ -154,8 +165,8 @@ function estimateComposition(model::RangeModel,
 		#println("test $test_i")
 		# find bottom and top of tolerence
 		dat = (rho[test_i], vp[test_i], vpvs[test_i])
-		bottoms = dat .- dat .* model.errors 
-		tops = dat .+ dat .* model.errors 
+		bottoms = dat .- model.errors 
+		tops = dat .+ model.errors 
 
 		#println("Gathering samples in seismic range from $bottoms to $tops")
 
@@ -174,7 +185,7 @@ function estimateComposition(model::RangeModel,
 		ends = [searchsortedfirst(model.lookups[i], tops[i]) for i in 1:3]
 		ends = ends .- 1 # searchsorted returns index of first value *larger than* query 
 		# Match back to indices 
-		indices = [model.perms[i][starts[i]:ends[i]] for i in 1:3]
+		indices = [Set(model.perms[i][starts[i]:ends[i]]) for i in 1:3]
 
 		# find indices agreed upon by all types of seismic data 
 		# TODO make this faster if we end up using big bins, for now assume n^2 is fine 
@@ -189,9 +200,10 @@ function estimateComposition(model::RangeModel,
 		mean!(numMatched, length(agreed))
 
 		# look up compositions of agreed upon indices 
-		compositions = model.comp[agreed, 2]
-		results[test_i] = nanmean(compositions)
-		result_stds[test_i] = nanstd(compositions)
+		compositions = model.comp[agreed, 2:end] # First is just index 
+		#results_indices[test_i] = model.comp[agreed, 1]
+		results[test_i,:] = mean(compositions, dims=1) 
+		result_stds[test_i,:] = std(compositions, dims=1)
 
 
 		# Sanity check: mean seismic data for agreed-upon indices better be within error of test val.
@@ -206,14 +218,25 @@ function estimateComposition(model::RangeModel,
 		end 
 	end
 
-	println("reporting from estimation function: 
-		Mean matched samples $(numMatched.m) for $(numMatched.n) samples tried.
-		$(sum(.! isnan.(results))) not NaN results out of $(length(rho)) inputs")
+	# println("reporting from estimation function: 
+	# 	Mean matched samples $(numMatched.m) for $(numMatched.n) samples tried.
+	# 	$(sum(.! isnan.(results))) not NaN results out of $(length(rho)) inputs")
+	if numMatched.m < 10
+		println("Warning: matched on average less than 10 perplex samples per test sample.")
+	end 
 
-	return results, result_stds
+	return results, result_stds #, results_indices
 
 end
 
+# Just returns one elemnt of interest 
+function resultSize(model::InversionModel)
+	return 1
+end
+
+function resultSize(model::BadModel)
+	return 1 
+end 
 
 """
     InversionModel(ign, seismic)
@@ -226,6 +249,9 @@ function InversionModel(ign::Array{Float64, 2}, seismic::Array{Float64, 2})
 		#println(hcat(ign[1:100,1], seismic[1:100,1]))
 		throw(ArgumentError("Indices in seismic data do not match those in composition data"))
 	end
+
+	# Only use SiO2 
+	ign = ign[:,1:2]
 
 	# Normalize data 
 	rhoNorm = Norm(nanstd(seismic[:,2]), nanmean(seismic[:,2]))
@@ -328,17 +354,37 @@ function estimateComposition(models::ModelCollection, layer::String,
 	end
 
 	# Input and result data for all geotherm bins 
-	results = Array{Float64, 1}(undef, length(rho))
-	errors = Array{Float64, 1}(undef, length(rho))
+	nresults = resultSize(models.models["upper"][1])
+	results = fill(0.0, (length(rho), nresults))
+	errors = fill(0.0, (length(rho), nresults))
+	done = fill(0, length(rho))
 
 	@showprogress "Running samples" for (i, bin_bottom) in enumerate(models.bins[1:end-1])
 		# Look in ign for only the samples with geotherms in this bin 
 		bin_top = models.bins[i+1]
-		test = (geotherms .> bin_bottom) .& (geotherms .<= bin_top)
+
+		if length(models.bins) == 2 # only one bin, run all geotherms  
+			test = fill(true, length(geotherms))
+		elseif i == 1 # first bin; include all low geotherms
+			test = (geotherms .<= bin_top)
+		elseif i == (length(models.bins) - 1) # top bin, include all high geotherms 
+			test = (geotherms .> bin_bottom)
+		else 
+			test = (geotherms .> bin_bottom) .& (geotherms .<= bin_top)
+		end 
+
+		if sum(test) == 0
+			continue # This bin is empty 
+		end 
 		(means, es) = estimateComposition(models.models[layer][i], rho[test], vp[test], vpvs[test])
-		results[test] = means
-		errors[test] = es
+		results[test,:] = means
+		errors[test,:] = es
+		done[test] .= 1
 	end 
+
+	if sum(done) != length(done)
+		throw(AssertionError("Did not process all samples. Processed $(sum(done)) out of $(length(done))"))
+	end
 
 	return (results, errors)
 end 
@@ -355,9 +401,11 @@ function makeModels(data_location::String; resamplePerplex::Bool=false, modelTyp
 	elements = PERPLEX_ELEMENTS
 
 	# Build models for every (geotherm bin)/layer combo 
-	filePrefix = "perplex_out_"
 	fileNames = filter(x->contains(x,"perplex_out_"), readdir("data/$data_location"))
 	nBins = length(fileNames)
+	if nBins == 0 
+		throw(AssertionError("No perplex results found for data directory $data_location"))
+	end 
 	bins = crustDistribution.binBoundaries(nBins)
 
 	# Models for each layer. upper[i] is model for i-th geotherm bin. 
@@ -385,9 +433,9 @@ function makeModels(data_location::String; resamplePerplex::Bool=false, modelTyp
 		end 
 
 		# Build models. use SiO2 (index 2 in ign). 
-		upper[bin_num] = modelType(ign[:,1:2], Array(perplexresults[:,1,:]'))
-		middle[bin_num] = modelType(ign[:,1:2], Array(perplexresults[:,2,:]'))
-		lower[bin_num] = modelType(ign[:,1:2], Array(perplexresults[:,3,:]'))
+		upper[bin_num] = modelType(ign, Array(perplexresults[:,1,:]'))
+		middle[bin_num] = modelType(ign, Array(perplexresults[:,2,:]'))
+		lower[bin_num] = modelType(ign, Array(perplexresults[:,3,:]'))
 	end 
 
 	return ModelCollection(Dict(LAYER_NAMES[1]=>upper, LAYER_NAMES[2]=>middle, LAYER_NAMES[3]=>lower), bins, nBins)

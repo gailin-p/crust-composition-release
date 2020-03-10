@@ -12,4 +12,15 @@ function testBinnedGeotherm()
 	end
 end
 
+function testBinBoundaries() 
+	bin1 = crustDistribution.binBoundaries(1)
+	bin10 = crustDistribution.binBoundaries(10)
+	if (length(bin1) != 2)
+		throw(AssertionError("one-bin case broken"))
+	end 
+	if length(bin10) != 11
+		throw(AssertionError("10 bin case broken"))
+	end 
+end 
+
 testBinnedGeotherm()
