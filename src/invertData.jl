@@ -115,6 +115,32 @@ function nOriginal()
   return length(crustDistribution.all_lats)
 end 
 
+"""
+  FRSeismic() 
+Same idea as getAllSeismic, but return fountain/rudnick data. Only returns vp. 
+layer: 6, 7, or 8 (upper, middle, lower)
+"""
+function FRSeismic(layer::Integer; model::Integer=2, n::Integer=400, resample::Bool=true)
+  dat, header = readdlm("Fountain-Rudnick.csv", ',', header=true)
+  header = header[:]
+
+  # Get data 
+  layers = ["upper vp", "middle vp", "lower vp"]
+  vp = dat[:,findfirst(isequal(layers[layer-5]), header)]
+  weights = dat[:,findfirst(isequal("%, RF model $(model)"), header)]
+  good = vp .!= ""
+  vp = float.(vp[good])
+  weights = float.(weights[good])
+
+  # Resample 
+  if resample 
+    resampled = bsresample(vp, relerr_vp .* vp, n, weights)
+    return resampled[:] 
+  else 
+    return vp 
+  end 
+end 
+
 
 """
     getAllSeismic()

@@ -11,6 +11,8 @@ using ProgressMeter
 using DelimitedFiles
 using HDF5
 using MAT 
+using Random
+using Plots; gr();
 
 include("../bin.jl") # TODO use Brenhin's version (bin_bsr with nresamples=0)
 include("crustDistribution.jl")
@@ -88,7 +90,7 @@ Compare to InversionModel, which uses a binned relationship between PCA and comp
 mutable struct RangeModel <: AbstractModel
 	# Sorted data. Lookups are sorted arrays, perms are indices back to unsorted data. 
 	perms::Tuple{Array{Float64,1}, Array{Float64,1}, Array{Float64,1}}
-	lookups::Tuple{Array{Float64,1}, Array{Float64,1}, Array{Float64,1}}
+	lookups::Tuple{Array{Float64,1}, Array{Float64,1}, Array{Float64,1}} # rho, vp, vpvs 
 	# Size of bin for each seismic data type 
 	errors::Tuple{Float64,Float64,Float64}
 	# Original data 
@@ -145,11 +147,68 @@ end
 
 """
 	estimateComposition
+Use only Vp. Mostly a copy of full estimateComposition func. Could refactor so they're same func.
+"""
+function estimateComposition(model::RangeModel, vp::Array{Float64,1})
+	
+	results = fill(NaN, (length(vp), size(model.comp,2)-1))
+	result_stds = fill(NaN, (length(vp), size(model.comp,2)-1))
+	#results_indices = fill([], length(rho)) # list of lists of indices for each sample 
+
+	numMatched = RunningMean()
+	
+	for test_i in 1:length(vp)
+		#println("test $test_i")
+		# find bottom and top of tolerence
+		sample = vp[test_i]
+		bottom = sample - model.errors[2]
+		top = sample + model.errors[2]
+
+		# Special case: too small or too large, search won't return valid range 
+		if (top < model.lookups[2][1]) | (bottom > model.lookups[2][end])
+			results[test_i] = NaN 
+			result_stds[test_i] = NaN 
+			#println("Warning: test sample outside of training data range.")
+			continue 
+		end 
+
+		# Look up in lookup, then match back to index using perm 
+		start = searchsortedfirst(model.lookups[2], bottom) 
+		ends = searchsortedfirst(model.lookups[2], top) 
+		ends = ends .- 1 # searchsorted returns index of first value *larger than* query 
+		# Match back to indices 
+		agreed = Int.(Array(model.perms[2][start:ends]))
+
+		#println("agree on $agreed")
+		# How many were matched? 
+		mean!(numMatched, length(agreed))
+
+		# look up compositions of agreed upon indices 
+		compositions = model.comp[agreed, 2:end] # First is just index 
+		#results_indices[test_i] = model.comp[agreed, 1]
+		results[test_i,:] = mean(compositions, dims=1) 
+		result_stds[test_i,:] = std(compositions, dims=1)
+
+	end
+
+	# println("reporting from estimation function: 
+	# 	Mean matched samples $(numMatched.m) for $(numMatched.n) samples tried.
+	# 	$(sum(.! isnan.(results))) not NaN results out of $(length(rho)) inputs")
+	if numMatched.m < 10
+		println("Warning: matched on average less than 10 perplex samples per test sample.")
+	end 
+
+	return results, result_stds #, results_indices
+end 
+
+"""
+	estimateComposition
 naiive implementation: search in sorted seismic lists for points within threshold. see: searchsortedfirst
 Alternative, if that's too slow: try sorting in 3d space, see GeometricalPredicates 
 """
 function estimateComposition(model::RangeModel, 
-	rho::Array{Float64,1}, vp::Array{Float64,1}, vpvs::Array{Float64,1})
+	rho::Array{Float64,1}, vp::Array{Float64,1}, vpvs::Array{Float64,1};
+	abort::Bool=false) # if abort, just return compositions matching first seismic.
 
 	if (length(rho) != length(vp)) | (length(vp) != length(vpvs))
 		throw(AssertionError("Lengths of seismic datasets don't match"))
@@ -201,9 +260,20 @@ function estimateComposition(model::RangeModel,
 
 		# look up compositions of agreed upon indices 
 		compositions = model.comp[agreed, 2:end] # First is just index 
-		#results_indices[test_i] = model.comp[agreed, 1]
-		results[test_i,:] = mean(compositions, dims=1) 
-		result_stds[test_i,:] = std(compositions, dims=1)
+		
+		if length(agreed)==0
+			results[test_i,:] .= NaN
+			result_stds[test_i,:] .= NaN
+		else
+			# Select one of matching samples 
+			#idx = rand(1:length(agreed))
+			#results[test_i,:] = compositions[idx, :]
+			#result_stds[test_i,:] .= -1
+			
+			# Alternative: Mean sample 
+			results[test_i,:] = mean(compositions, dims=1) 
+			result_stds[test_i,:] = std(compositions, dims=1)
+		end
 
 
 		# Sanity check: mean seismic data for agreed-upon indices better be within error of test val.
@@ -216,6 +286,10 @@ function estimateComposition(model::RangeModel,
 			(matched_vpvs > tops[3]) | (matched_vpvs < bottoms[3]) 
 			throw(AssertionError("Model matched samples which don't have seismic data close to test."))
 		end 
+
+		if abort 
+			return compositions
+		end
 	end
 
 	# println("reporting from estimation function: 

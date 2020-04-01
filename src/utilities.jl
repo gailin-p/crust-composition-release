@@ -1,6 +1,6 @@
 using Statistics
 using DelimitedFiles 
-
+using StatGeochem 
 
 """
 Keep a running mean
@@ -32,6 +32,10 @@ function normalizeComp!(a::AbstractArray{Float64, 2})
 	for row in 1:size(a,1)
 		a[row,:] .= (a[row,:] ./ sums[row]) .* 100
 	end 
+end 
+
+function inverseMean(a::AbstractArray{Float64, 1})
+	return 1/(nanmean(1 ./ a))
 end 
 
 """

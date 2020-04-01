@@ -34,7 +34,7 @@ s = ArgParseSettings()
         arg_type = String
         range_tester = x -> (x in ["tc1","earthchem"])
         default = "earthchem"
-    # "--bin_size", "-b"
+    # "--bin_size", "-b" # TODO implement 
     # 	help = "% of each sizemic parameter in bin for range model (in decimal form)"
     # 	arg_type = Int
     # 	default = .05
