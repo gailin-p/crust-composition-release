@@ -149,8 +149,10 @@ From Crust1.0
 Optionally resample (using weights corresponding to area of each 1x1 degree square).
 Latlong info optionally returned. 
 By default, resample with Tc1 ages 
+Optionally add a systematic bias to Crust1.0 seismic data after resampling. 
 """
-function getAllSeismic(layer::Integer; ageModel::AgeModel=Tc1Age(), n::Integer=50000, resample::Bool=true, latlong::Bool=false)
+function getAllSeismic(layer::Integer; 
+  ageModel::AgeModel=Tc1Age(), n::Integer=50000, resample::Bool=true, systematic::Bool=false, latlong::Bool=false)
     if !(layer in [6,7,8])
         throw(ArgumentError("Layer must be 6, 7, or 8 (crysteline Crust1 layers)"))
     end
@@ -195,6 +197,12 @@ function getAllSeismic(layer::Integer; ageModel::AgeModel=Tc1Age(), n::Integer=5
         depth = resampled[:,5]
         ages = resampled[:,6]
     end
+
+    if systematic
+      rho = rho .+ mean(rho)*relerr_rho*(rand()-.5)
+      vp = vp .+ mean(vp)*relerr_vp*(rand()-.5)
+      vs = vs .+ mean(vs)*relerr_vs*(rand()-.5)
+    end 
 
     if latlong 
         return ((rho, vp, vp ./ vs, geotherms), (depth, ages, lats, longs))
