@@ -34,7 +34,7 @@ end
 
 """
    bin 
-No oversamplingratio, so return std 
+No oversamplingratio, so return standard error of mean  
 """
 function bin(x,y,min,max,nbins)
     # [bincenters,averages,errors,varargout]=bin(x,y,min,max,oversamplingratio,nbins,varargin)
@@ -52,7 +52,7 @@ function bin(x,y,min,max,nbins)
     for i=1:nbins
         test = (x .> binedges[i]) .& (x .< binedges[i+1]) .& (.~ map(isnan, y))
         averages[i]=nanmean(y[test])
-        errors[i]=nanstd(y[test])
+        errors[i]=nanstd(y[test])/sqrt(length(y[test]))
         xerrors[i]=bincenters[i] - nanmean(x[test])
     end
     return bincenters, averages, errors
