@@ -1,11 +1,13 @@
 """ 
 Inversion for binned geotherm (works for not binned too; treats like nbins=1)
 
+Main entry script for inversions. 
 """
 
 using DelimitedFiles
 using HDF5
 using StatGeochem
+using StatsBase
 using ProgressMeter: @showprogress
 using ArgParse
 using Plots; gr();
@@ -19,13 +21,14 @@ s = ArgParseSettings()
     "--data_prefix", "-d"
         help = "Folder for data files"
         arg_type= String
-        default="remote/bin_geotherm_si_weighted"
+        default="remote/latlong_weighted"
     "--model", "-m"
         help = "Type of model to use. Allowed: inversion (PCA), range (range of nearby samples)"
         arg_type = String
         range_tester = x -> (x in ["inversion","range"])
         default = "range"
-    "--num_invert", "-n"
+    ## TODO add option for random systematic/dependent uncertainty 
+    "--num_invert", "-n" ## TODO remove option 
     	help = "How many resampled Crust1.0 samples to invert?"
     	arg_type = Int
     	default = 50000
@@ -34,10 +37,10 @@ s = ArgParseSettings()
         arg_type = String
         range_tester = x -> (x in ["tc1","earthchem"])
         default = "earthchem"
-    # "--bin_size", "-b" # TODO implement 
-    # 	help = "% of each sizemic parameter in bin for range model (in decimal form)"
-    # 	arg_type = Int
-    # 	default = .05
+    "--bin_size", "-b" # TODO implement 
+    	help = "% of each sizemic parameter in bin for range model (in decimal form)"
+    	arg_type = Float64
+    	default = .05
 end
 parsed_args = parse_args(ARGS, s)
 writeOptions("data/"*parsed_args["data_prefix"]*"/inversion_options-$(parsed_args["model"])-$(parsed_args["age_model"]).csv", parsed_args)
@@ -45,6 +48,7 @@ writeOptions("data/"*parsed_args["data_prefix"]*"/inversion_options-$(parsed_arg
 function run(parsed_args)
 	if parsed_args["model"] == "range"
 		models = makeModels(parsed_args["data_prefix"], modelType=RangeModel) # see inversionModel.jl. returns a ModelCollection 
+		setError(models, parsed_args["bin_size"])
 	elseif parsed_args["model"] == "inversion"
 		models = makeModels(parsed_args["data_prefix"], modelType=InversionModel)
 	end 
@@ -78,7 +82,7 @@ function run(parsed_args)
 	println("Mean of lower results $(nanmean(results[3][:,SI_index]))")
 
 	# Oversampling ratio 
-	n_original = length(crustDistribution.all_lats) # number of 1x1 grid cells w data at this age. 
+	n_original = length(crustDistribution.all_lats) # number of 1x1 grid cells w data at 
 	n_resampled = parsed_args["num_invert"]
 
 	# By age! 
@@ -91,17 +95,17 @@ function run(parsed_args)
 	for (age_index, age) in enumerate(ages[1:end-1]) # duplicate of above, but using age when requesting data to invert and saving mean data to age_results
 
 		# Result data for this age bin 
-		testUpper = (upperAge .>= age) .& (upperAge .< ages[age_index+1])
-		testMiddle = (middleAge .>= age) .& (middleAge .< ages[age_index+1])
-		testLower = (lowerAge .>= age) .& (lowerAge .< ages[age_index+1])
+		testUpper = (upperAge .>= age) .& (upperAge .< ages[age_index+1]) .& (results_upper[:,SI_index] .!= NaN)
+		testMiddle = (middleAge .>= age) .& (middleAge .< ages[age_index+1]) .& (results_middle[:,SI_index] .!= NaN)
+		testLower = (lowerAge .>= age) .& (lowerAge .< ages[age_index+1]) .& (results_lower[:,SI_index] .!= NaN)
 
 		# save upper, middle, lower results 
-		age_results[1,age_index] = nanmean(results_upper[testUpper,SI_index]) 
-		age_results[2,age_index] = nanmean(results_middle[testMiddle,SI_index])
-		age_results[3,age_index] = nanmean(results_lower[testLower,SI_index])
-		age_1std[1,age_index] = nanstd(results_upper[testUpper,SI_index]) * sqrt(n_original)/sqrt(n_resampled)
-		age_1std[2,age_index] = nanstd(results_middle[testMiddle,SI_index]) * sqrt(n_original)/sqrt(n_resampled)
-		age_1std[3,age_index] = nanstd(results_lower[testLower,SI_index]) * sqrt(n_original)/sqrt(n_resampled)
+		age_results[1,age_index] = mean(results_upper[testUpper,SI_index]) 
+		age_results[2,age_index] = mean(results_middle[testMiddle,SI_index])
+		age_results[3,age_index] = mean(results_lower[testLower,SI_index])
+		age_1std[1,age_index] = sem(results_upper[testUpper,SI_index]) * sqrt(n_original)/sqrt(n_resampled)
+		age_1std[2,age_index] = sem(results_middle[testMiddle,SI_index]) * sqrt(n_original)/sqrt(n_resampled)
+		age_1std[3,age_index] = sem(results_lower[testLower,SI_index]) * sqrt(n_original)/sqrt(n_resampled)
 	end 
 
 

@@ -105,10 +105,27 @@ end
 """
 	Explicitly set the error ranges for a RangeModel 
 """
-function RangeModel(ign::Array{Float64, 2}, seismic::Array{Float64, 2}, errors::Tuple{Float64,Float64,Float64})
-	model = RangeModel(ign, seismic)
+function setError(model::RangeModel, errors::Tuple{Float64,Float64,Float64})
 	model.errors = errors .* (nanmean(model.lookups[1]), nanmean(model.lookups[2]), nanmean(model.lookups[2]))
 	return model 
+end 
+
+"""
+	Explicitly set the error ranges for an InversionModel (not implemented )
+"""
+function setError(model::InversionModel, errors::Tuple{Float64,Float64,Float64})
+	throw("bin size or margin setting not implemented for inversion model.")
+end 
+
+"""
+	Set bin size for every model in a model collection of range models 
+"""
+function setError(models::ModelCollection, bin::Float64)
+	for layer in keys(models.models) 
+		for model in models.models[layer]
+			setError(model, (bin, bin, bin))
+		end 
+	end
 end 
 
 """
@@ -266,13 +283,13 @@ function estimateComposition(model::RangeModel,
 			result_stds[test_i,:] .= NaN
 		else
 			# Select one of matching samples 
-			#idx = rand(1:length(agreed))
-			#results[test_i,:] = compositions[idx, :]
-			#result_stds[test_i,:] .= -1
+			idx = rand(1:length(agreed))
+			results[test_i,:] = compositions[idx, :]
+			result_stds[test_i,:] .= -1
 			
 			# Alternative: Mean sample 
-			results[test_i,:] = mean(compositions, dims=1) 
-			result_stds[test_i,:] = std(compositions, dims=1)
+			#results[test_i,:] = mean(compositions, dims=1) 
+			#result_stds[test_i,:] = std(compositions, dims=1)
 		end
 
 
@@ -470,7 +487,7 @@ Load data for an inversion run (function expects ign csv from resampleEarthChem 
 
 Returns touple of lists of models, (upper, middle, lower), each with as many models as geotherm bins. 
 """
-function makeModels(data_location::String; resamplePerplex::Bool=false, modelType::DataType=InversionModel)
+function makeModels(data_location::String; resamplePerplex::Bool=false, modelType::DataType=RangeModel)
 	# Elements in ign files: index, elts, geotherm, layers. TODO add header to CSV created by resampleEarthChem
 	elements = PERPLEX_ELEMENTS
 
