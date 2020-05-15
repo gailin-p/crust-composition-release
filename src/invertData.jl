@@ -14,6 +14,7 @@ using Statistics
 using Test 
 using Random
 
+# one std relative error 
 uncertainty_dat = matread("igncn1.mat")["err2srel"]
 relerr_rho = uncertainty_dat["Rho"]/2
 relerr_vp = uncertainty_dat["Vp"]/2
@@ -199,9 +200,9 @@ function getAllSeismic(layer::Integer;
     end
 
     if systematic
-      rho = rho .+ mean(rho)*relerr_rho*(rand()-.5)
-      vp = vp .+ mean(vp)*relerr_vp*(rand()-.5)
-      vs = vs .+ mean(vs)*relerr_vs*(rand()-.5)
+      rho = rho .+ mean(rho)*relerr_rho*randn()
+      vp = vp .+ mean(vp)*relerr_vp*randn()
+      vs = vs .+ mean(vs)*relerr_vs*randn()
     end 
 
     if latlong 
