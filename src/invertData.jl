@@ -16,9 +16,12 @@ using Random
 
 # one std relative error 
 uncertainty_dat = matread("igncn1.mat")["err2srel"]
-relerr_rho = uncertainty_dat["Rho"]/2
-relerr_vp = uncertainty_dat["Vp"]/2
-relerr_vs = uncertainty_dat["Vs"]/2
+#relerr_rho = uncertainty_dat["Rho"]/2
+#relerr_vp = uncertainty_dat["Vp"]/2
+#relerr_vs = uncertainty_dat["Vs"]/2
+relerr_rho = .05 # Huang et al error estimate: 1 std = 5% err  
+relerr_vp = .05
+relerr_vs = .05
 relerr_tc1 = uncertainty_dat["tc1Crust"]/2
 relerr_crust = uncertainty_dat["Crust"]/2 # for crust1.0
 
