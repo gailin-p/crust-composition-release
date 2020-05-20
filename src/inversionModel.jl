@@ -106,7 +106,7 @@ end
 	Explicitly set the error ranges for a RangeModel 
 """
 function setError(model::RangeModel, errors::Tuple{Float64,Float64,Float64})
-	model.errors = errors .* (nanmean(model.lookups[1]), nanmean(model.lookups[2]), nanmean(model.lookups[2]))
+	model.errors = errors .* (nanmean(model.lookups[1]), nanmean(model.lookups[2]), nanmean(model.lookups[3]))
 	return model 
 end 
 
@@ -123,7 +123,9 @@ end
 function setError(models::ModelCollection, bin::Float64)
 	for layer in keys(models.models) 
 		for model in models.models[layer]
+			println("Error was $(model.errors)")
 			setError(model, (bin, bin, bin))
+			println("Now error is $(model.errors)")
 		end 
 	end
 end 
@@ -152,11 +154,7 @@ function RangeModel(ign::Array{Float64, 2}, seismic::Array{Float64, 2})
 	vpvs_perm = sortperm(seismic[:,4])
 	vpvs_lookup = seismic[:,4][vpvs_perm]
 
-	# Default errors TODO I think defaults from igncn1 are too small 
-	#all_errors = matread(IGN_FILE)["err2srel"]
-	#errors = (all_errors["Rho"]/2, all_errors["Vp"]/2, all_errors["Vp"]/2) # TODO this is not right, but really we want std(vp/vs), and there's no easy way to get that out of std(vp) and std(vs), see https://stats.stackexchange.com/questions/58800/what-is-the-mean-and-standard-deviation-of-the-division-of-two-random-variables
-	#errors = errors .* (mean(rho_lookup), mean(vp_lookup), mean(vpvs_lookup))
-	
+	# Default bin sizes 
 	errors = (.05, .05, .05) .* (nanmean(rho_lookup), nanmean(vp_lookup), nanmean(vpvs_lookup))
 
 	return RangeModel((rho_perm, vp_perm, vpvs_perm), (rho_lookup, vp_lookup, vpvs_lookup), errors, seismic, ign)
