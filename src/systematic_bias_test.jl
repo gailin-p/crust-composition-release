@@ -67,9 +67,9 @@ function worker()
 		
 		age_model = EarthChemAge(10, 3)
 
-		upperDat, (upperCrustbase, upperAge, upperLat, upperLong) = getAllSeismic(6, n=20, ageModel=age_model, latlong=true) # returns rho, vp, vpvs, tc1, age
-		middleDat, (middleCrustbase, middleAge, middleLat, middleLong) = getAllSeismic(7, n=20, ageModel=age_model, latlong=true)
-		lowerDat, (lowerCrustbase, lowerAge, lowerLat, lowerLong) = getAllSeismic(8, n=20, ageModel=age_model, latlong=true)
+		upperDat, (upperCrustbase, upperAge, upperLat, upperLong) = getAllSeismic(6, ageModel=age_model, latlong=true) # returns rho, vp, vpvs, tc1, age
+		middleDat, (middleCrustbase, middleAge, middleLat, middleLong) = getAllSeismic(7, ageModel=age_model, latlong=true)
+		lowerDat, (lowerCrustbase, lowerAge, lowerLat, lowerLong) = getAllSeismic(8, ageModel=age_model, latlong=true)
 
 		# Result data per geotherm bin 
 		results_upper, errors_upper = estimateComposition(models, UPPER, upperDat...)
