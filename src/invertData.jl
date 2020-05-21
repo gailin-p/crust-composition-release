@@ -16,12 +16,13 @@ using Random
 
 # one std relative error 
 uncertainty_dat = matread("igncn1.mat")["err2srel"]
-#relerr_rho = uncertainty_dat["Rho"]/2
-#relerr_vp = uncertainty_dat["Vp"]/2
-#relerr_vs = uncertainty_dat["Vs"]/2
-relerr_rho = .05 # Huang et al error estimate: 1 std = 5% err  
-relerr_vp = .05
-relerr_vs = .05
+# Now using std as error, see getAllSeismic
+# relerr_rho = uncertainty_dat["Rho"]/2
+# relerr_vp = uncertainty_dat["Vp"]/2
+# relerr_vs = uncertainty_dat["Vs"]/2
+# relerr_rho = .05 # Huang et al error estimate: 1 std = 5% err  
+# relerr_vp = .05
+# relerr_vs = .05
 relerr_tc1 = uncertainty_dat["tc1Crust"]/2
 relerr_crust = uncertainty_dat["Crust"]/2 # for crust1.0
 
@@ -171,6 +172,10 @@ function getAllSeismic(layer::Integer;
 
     (vp, vs, rho) = find_crust1_seismic(lats, longs, layer)
 
+    err_rho = std(rho)
+    err_vp = std(vp)
+    err_vs = std(vs)
+
     if resample 
         k = crustDistribution.latLongWeight.(lats)
         # Probability of keeping a given data point when sampling:
@@ -180,7 +185,7 @@ function getAllSeismic(layer::Integer;
 
         if latlong 
             samples = hcat(rho, vp, vs, geotherms, crustbase, ages, lats, longs)
-            sigma = hcat(rho .* relerr_rho, vp .* relerr_vp, vs .* relerr_vs, geotherms .* relerr_tc1, 
+            sigma = hcat(fill(err_rho, length(rho)), fill(err_vp, length(vp)), fill(err_vs, length(vs)), geotherms .* relerr_tc1, 
             	crustbase .* relerr_crust, age_uncertainty,
                 fill(err_latlong, length(rho)), fill(err_latlong, length(rho)))
             resampled = bsresample(samples, sigma, n, p)
@@ -189,7 +194,7 @@ function getAllSeismic(layer::Integer;
         else 
             # Resample! 
             samples = hcat(rho, vp, vs, geotherms, crustbase, ages)
-            sigma = hcat(rho .* relerr_rho, vp .* relerr_vp, vs .* relerr_vs, geotherms .* relerr_tc1, 
+            sigma = hcat(fill(err_rho, length(rho)), fill(err_vp, length(vp)), fill(err_vs, length(vs)), geotherms .* relerr_tc1, 
             	crustbase .* relerr_crust, age_uncertainty)
             resampled = bsresample(samples, sigma, n, p)
         end
@@ -203,9 +208,9 @@ function getAllSeismic(layer::Integer;
     end
 
     if systematic
-      rho = rho .+ mean(rho)*relerr_rho*randn()
-      vp = vp .+ mean(vp)*relerr_vp*randn()
-      vs = vs .+ mean(vs)*relerr_vs*randn()
+      rho = rho .+ err_rho*randn()
+      vp = vp .+ err_vp*randn()
+      vs = vs .+ err_vs*randn()
     end 
 
     if latlong 
