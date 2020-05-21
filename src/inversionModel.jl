@@ -123,9 +123,7 @@ end
 function setError(models::ModelCollection, bin::Float64)
 	for layer in keys(models.models) 
 		for model in models.models[layer]
-			println("Error was $(model.errors)")
 			setError(model, (bin, bin, bin))
-			println("Now error is $(model.errors)")
 		end 
 	end
 end 
