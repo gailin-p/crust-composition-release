@@ -27,8 +27,7 @@ s = ArgParseSettings()
         arg_type = String
         range_tester = x -> (x in ["inversion","range"])
         default = "range"
-    ## TODO add option for random systematic/dependent uncertainty 
-    "--num_invert", "-n" ## TODO remove option 
+    "--num_invert", "-n" 
     	help = "How many resampled Crust1.0 samples to invert?"
     	arg_type = Int
     	default = 50000
@@ -37,7 +36,7 @@ s = ArgParseSettings()
         arg_type = String
         range_tester = x -> (x in ["tc1","earthchem"])
         default = "earthchem"
-    "--bin_size", "-b" # TODO implement 
+    "--bin_size", "-b"  
     	help = "% of each sizemic parameter in bin for range model (in decimal form)"
     	arg_type = Float64
     	default = .05
@@ -85,73 +84,8 @@ function run(parsed_args)
 	n_original = length(crustDistribution.all_lats) # number of 1x1 grid cells w data at 
 	n_resampled = parsed_args["num_invert"]
 
-	# By age! 
-
-	ages = ageBins(age_model) 
-	
-	age_results = Array{Float64, 2}(undef, 3, length(ages)-1) # (layer, age)
-	age_1std = Array{Float64, 2}(undef, 3, length(ages)-1) # (layer, age)
-
-	for (age_index, age) in enumerate(ages[1:end-1]) # duplicate of above, but using age when requesting data to invert and saving mean data to age_results
-
-		# Result data for this age bin 
-		testUpper = (upperAge .>= age) .& (upperAge .< ages[age_index+1]) .& (results_upper[:,SI_index] .!= NaN)
-		testMiddle = (middleAge .>= age) .& (middleAge .< ages[age_index+1]) .& (results_middle[:,SI_index] .!= NaN)
-		testLower = (lowerAge .>= age) .& (lowerAge .< ages[age_index+1]) .& (results_lower[:,SI_index] .!= NaN)
-
-		# save upper, middle, lower results 
-		age_results[1,age_index] = mean(results_upper[testUpper,SI_index]) 
-		age_results[2,age_index] = mean(results_middle[testMiddle,SI_index])
-		age_results[3,age_index] = mean(results_lower[testLower,SI_index])
-		age_1std[1,age_index] = sem(results_upper[testUpper,SI_index]) * sqrt(n_original)/sqrt(n_resampled)
-		age_1std[2,age_index] = sem(results_middle[testMiddle,SI_index]) * sqrt(n_original)/sqrt(n_resampled)
-		age_1std[3,age_index] = sem(results_lower[testLower,SI_index]) * sqrt(n_original)/sqrt(n_resampled)
-	end 
-
-
-	p = plot(size=(800,600));
-
-	for i in 1:3 # layers 
-		plot!(p, ages[1:end-1], age_results[i,:], yerror=age_1std[i,:], label=LAYER_NAMES[i], markerstrokecolor=:auto)
-	end 
-
-	plot!(p, [200], [66.0], seriestype=:scatter, marker=7,markershape=:star5, markercolor=:blue, label="Upper of R & F")
-	plot!(p, [200], [60.6], seriestype=:scatter, marker=7,markershape=:star5, markercolor=:orange, label="Middle of R & F")
-	plot!(p, [200], [52.3], seriestype=:scatter, marker=7,markershape=:star5, markercolor=:green, label="Lower of R & F")
-
-	# Plot exposed 
-	tmin = 0
-	tmax = 4000
-	nbins = 10
-	samplePath = "data/$(parsed_args["data_prefix"])/bsr_ignmajors_1.csv"
-	ign = readdlm(samplePath, ',')
-	age_i = findfirst(isequal("Age"),PERPLEX_ELEMENTS)
-	si_i = findfirst(isequal("SiO2"),PERPLEX_ELEMENTS)
-	original = matread(IGN_FILE)
-	age_centers, elt_means, elt_errors = bin(ign[:,age_i], ign[:,si_i],
-	        tmin, tmax, length(ign[si_i])/length(original["SiO2"]), nbins)
-	plot!(p, age_centers, elt_means, yerror=elt_errors, label="Exposed");
-
-	plot!(p,xlabel="Age");
-	plot!(p,ylabel="SiO2 composition");
-	plot!(p,title="Composition estimations");
 	outputPath = "data/"*parsed_args["data_prefix"]*"/output"
 	mkpath(outputPath) # make if does not exist
-	savefig(p, outputPath*"/composition-ages-$(parsed_args["model"])-$(parsed_args["age_model"]).pdf");
-
-
-	# Plot composition by depth of crust base 
-	minBase = minimum(minimum.(sampleBases))
-	maxBase = maximum(maximum.(sampleBases))
-	p = plot(xlabel="Base of Crust1.0 (km)", ylabel="Estimated silica (wt%)")
-	for (l, layer) in enumerate(LAYER_NAMES)
-		centers, aves, yerrors, _  = bin(sampleBases[l], results[l][:,SI_index], minBase, maxBase, 
-			n_original/n_resampled, 10) # x,y,min,max,oversamplingratio,nbins
-		plot!(p, centers, aves, yerror=yerrors, label=layer)
-	end
-
-	savefig(p, outputPath*"/composition-crustbase-$(parsed_args["model"])-$(parsed_args["age_model"]).pdf")
-
 
 	# Write to output files (one per layer)
 	for (l, layer) in enumerate(LAYER_NAMES)
