@@ -14,7 +14,7 @@ using Plots; gr();
 using Interpolations
 
 include("../src/config.jl")
-include("../bin.jl")
+include("../src/bin.jl")
 
 s = ArgParseSettings()
 @add_arg_table s begin

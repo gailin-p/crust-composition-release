@@ -14,7 +14,7 @@ using MAT
 using Random
 using Plots; gr();
 
-include("../bin.jl") # TODO use Brenhin's version (bin_bsr with nresamples=0)
+include("bin.jl") # TODO use Brenhin's version (bin_bsr with nresamples=0)
 include("crustDistribution.jl")
 include("config.jl")
 include("utilities.jl")

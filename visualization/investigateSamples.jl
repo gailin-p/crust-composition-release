@@ -11,7 +11,7 @@ using Interpolations
 using StatsBase
 using Plots; gr();
 
-include("../bin.jl") # TODO locate and use statgeochem version of this
+include("../src/bin.jl") # TODO locate and use statgeochem version of this
 include("../src/utilities.jl")
 
 s = ArgParseSettings()

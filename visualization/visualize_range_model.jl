@@ -17,7 +17,7 @@ s = ArgParseSettings()
     "--show_test"
     	help = "Plot Crust1.0 test points on top of model plot?"
     	arg_type=Bool
-    	default=false
+    	default=true
 end
 parsed_args = parse_args(ARGS, s)
 
@@ -50,22 +50,22 @@ for (l, layer) in enumerate(LAYER_NAMES)
 	plots = []
 	for (i, camera) in enumerate(cameras)
 		colorbar=false
-		if (i == 3) | (l==3) # colorbar on last plot only (for all layers, on bottom layer.)
-			colorbar=:bottom 
-		end
-		q = plot(legend=false, colorbar=colorbar, colorbar_title="SiO2 (wt %)")
+		# if (i == 3) | (l==3) # colorbar on last plot only (for all layers, on bottom layer.)
+		# 	colorbar=:bottom 
+		# end
+		q = plot(legend=false, colorbar=colorbar)
 		# Add 1/nbins of points from every model to get overall view 
 		if parsed_args["show_test"] # Plot Crust1.0 test points on same axes 
 			tests, _ = getAllSeismic(l+5, resample=false)
 			tests = unique(hcat(tests[1:end-1]...), dims=1) # only 20 unique combos in unresampled data 
 			plot!(q, tests[:,1], tests[:,2], tests[:,3], 
-			seriestype=:scatter, markersize=5, markeralpha=1, markerstrokewidth=0, legend=false, markercolor=:green2)
+			seriestype=:scatter, markersize=8, markeralpha=1, markerstrokewidth=0, legend=false, markercolor=:green2)
 		end
 		for model in models.models[layer]
 			total = size(model.seismic,1)
 			plot!(q, model.seismic[1:models.nbins:total,2], # rho
 				model.seismic[1:models.nbins:total,3], model.seismic[1:models.nbins:total,4], # vp, vp/vs 
-				camera=camera, marker_z=model.comp[1:models.nbins:total,2], zlims=(0,4.0),
+				camera=camera, marker_z=model.comp[1:models.nbins:total,2], zlims=(1.5,3.5),
 				seriestype=:scatter, markersize=1, markerstrokewidth=0) # labels (xlabel="Rho (kg/m^3)", ylabel="Vp (m/s)", zlabel="Vp/Vs") look awful
 		end
 		if i==1 

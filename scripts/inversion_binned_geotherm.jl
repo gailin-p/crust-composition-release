@@ -12,9 +12,9 @@ using ProgressMeter: @showprogress
 using ArgParse
 using Plots; gr();
 
-include("inversionModel.jl")
-include("invertData.jl")
-include("../bin.jl")
+include("../src/inversionModel.jl")
+include("../src/invertData.jl")
+include("../src/bin.jl")
 
 s = ArgParseSettings()
 @add_arg_table s begin

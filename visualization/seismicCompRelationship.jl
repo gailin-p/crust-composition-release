@@ -6,7 +6,7 @@ using MAT
 using Statistics
 using StatsBase
 using Plots; gr();
-include("../bin.jl")
+include("../src/bin.jl")
 
 s = ArgParseSettings()
 @add_arg_table s begin

@@ -1,7 +1,0 @@
-#!/bin/bash
-#PBS -l nodes=64:ppn=16,walltime=12:00:00
-#PBS -m e
-#PBS -M cbkeller@princeton.edu
-
-module load openmpi
-mpiexec ./runPerplexBatchVp ignmajors.csv

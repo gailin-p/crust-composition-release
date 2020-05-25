@@ -14,7 +14,7 @@ using ArgParse
 using Plots; gr();
 using JLD
 
-include("src/commutativityOfAverage.jl")
+include("../src/commutativityOfAverage.jl")
 
 # Read user args: prefix for result files, input file names
 s = ArgParseSettings()

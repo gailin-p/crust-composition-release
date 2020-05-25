@@ -13,8 +13,8 @@ using ArgParse
 using DelimitedFiles
 using StatGeochem
 using HDF5
-include("config.jl")
-include("utilities.jl")
+include("../src/config.jl")
+include("../src/utilities.jl")
 
 s = ArgParseSettings()
 @add_arg_table s begin

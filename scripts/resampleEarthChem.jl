@@ -25,9 +25,9 @@ using DelimitedFiles
 using Logging
 using Statistics
 using ProgressMeter: @showprogress
-include("crustDistribution.jl")
-include("config.jl") # constants defined here 
-include("utilities.jl")
+include("../src/crustDistribution.jl")
+include("../src/config.jl") # constants defined here 
+include("../src/utilities.jl")
 
 s = ArgParseSettings()
 @add_arg_table s begin
@@ -54,7 +54,9 @@ s = ArgParseSettings()
         default = 1
 end
 parsed_args = parse_args(ARGS, s)
-writeOptions("data/"*parsed_args["data_prefix"]*"/resampleEarthChem_options.csv", parsed_args)
+dir = parsed_args["data_prefix"]
+mkpath("data/"*dir) # make if does not exist
+writeOptions("data/"*dir*"/resampleEarthChem_options.csv", parsed_args)
 
 # Read in mat file
 ign = matread(parsed_args["data"])
@@ -176,8 +178,6 @@ if bins == 1
 
     # Write accepted samples to file
     dir = parsed_args["data_prefix"]
-    mkpath("data/"*dir) # make if does not exist
-
     path = "data/"*dir*"/bsr_ignmajors_1.csv"
     writedlm(path, round.(outtable, digits=5), ",")
 else # Replication and bins required! 

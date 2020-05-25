@@ -16,10 +16,10 @@ using ArgParse
 using DelimitedFiles
 using StatGeochem
 using HDF5
-include("config.jl")
-include("utilities.jl")
-include("inversionModel.jl")
-include("invertData.jl")
+include("../src/config.jl")
+include("../src/utilities.jl")
+include("../src/inversionModel.jl")
+include("../src/invertData.jl")
 
 s = ArgParseSettings()
 @add_arg_table s begin

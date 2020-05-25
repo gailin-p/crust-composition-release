@@ -11,7 +11,7 @@ using Plots; gr();
 
 include("../src/inversionModel.jl")
 include("../src/invertData.jl")
-include("../bin.jl")
+include("../src/bin.jl")
 
 s = ArgParseSettings()
 @add_arg_table s begin
