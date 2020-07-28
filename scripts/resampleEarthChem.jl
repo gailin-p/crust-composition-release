@@ -24,6 +24,7 @@ using MAT
 using DelimitedFiles
 using Logging
 using Statistics
+using Random
 using ProgressMeter: @showprogress
 include("../src/crustDistribution.jl")
 include("../src/config.jl") # constants defined here 
@@ -52,6 +53,10 @@ s = ArgParseSettings()
         help = "Bin geotherms? (1 for no binning.) Provides b output files, one for each bin"
         arg_type = Int
         default = 1
+    "--exhume"
+        help = "Apply random exhumation in the upper crust?"
+        arg_type = Bool
+        default = false 
 end
 parsed_args = parse_args(ARGS, s)
 dir = parsed_args["data_prefix"]
@@ -174,7 +179,13 @@ outtable[:,1] = Array(1:size(outtable,1)) # Set indices
 # Apply geotherms. Either any old geotherm will do or we need to replicate and apply different ones.
 bins = parsed_args["bin_geotherms"]
 if bins == 1
-    outtable[:,length(RESAMPLED_ELEMENTS)+2:end] = crustDistribution.getCrustParams(size(outtable,1), uncertain=true)
+    outtable[:,findfirst(isequal("geotherm"), PERPLEX_ELEMENTS):findfirst(isequal("lower"), PERPLEX_ELEMENTS)] = 
+        crustDistribution.getCrustParams(size(outtable,1), uncertain=true)
+    if parsed_args["exhume"]
+        outtable[:,findfirst(isequal("exhumed"), PERPLEX_ELEMENTS)] = rand(1:.1:10) # km 
+    else
+        outtable[:,findfirst(isequal("exhumed"), PERPLEX_ELEMENTS)] = 0 # km 
+    end 
 
     # Write accepted samples to file
     dir = parsed_args["data_prefix"]
@@ -184,8 +195,16 @@ else # Replication and bins required!
     bin_boundaries = crustDistribution.binBoundaries(bins)
     for (i, bin_bottom) in enumerate(bin_boundaries[1:end-1])
         bin_top = bin_boundaries[i+1]
-        outtable[:,length(RESAMPLED_ELEMENTS)+2:end] = 
+        outtable[:,length(RESAMPLED_ELEMENTS)+2:end-1] = 
             crustDistribution.getCrustParams(bin_bottom, bin_top, size(outtable,1), uncertain=true)
+
+        if parsed_args["exhume"]
+            outtable[:,findfirst(isequal("exhumed"), PERPLEX_ELEMENTS)] = 
+                rand(1:.1:10, size(outtable,1)) # km 
+        else
+            outtable[:,findfirst(isequal("exhumed"), PERPLEX_ELEMENTS)] = 
+                fill(0, size(outtable,1)) # km 
+        end 
 
         # Write this outtable before doing the next 
         dir = parsed_args["data_prefix"]

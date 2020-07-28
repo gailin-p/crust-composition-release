@@ -57,7 +57,9 @@ exclude = ""
 dataset = parsed_args["perplex_dataset"]
 dpdz = 2900. * 9.8 / 1E5 * 1E3
 # For now, use fluid and throw away results with NaN or 0 seismic properties. 
-solutions = "O(HP)\nOpx(HP)\nOmph(GHP)\nGt(HP)\noAmph(DP)\nGlTrTsPg\nT\nB\nAnth\nChl(HP)\nBio(TCC)\nMica(CF)\nCtd(HP)\nIlHm(A)\nSp(HP)\nSapp(HP)\nSt(HP)\nfeldspar\nDo(HP)\nF\n"
+solutions = "O(HP)\nOpx(HP)\nOmph(GHP)\nGt(HP)\noAmph(DP)\nGlTrTsPg\nT\nB\nAnth\nChl(HP)"*
+		"\nBio(TCC)\nMica(CF)\nCtd(HP)\nIlHm(A)\nSp(HP)\nSapp(HP)\nSt(HP)\nfeldspar"*
+		"\nDo(HP)\nF\n"
 npoints = 20
 
 # Perplex labels used by StatGeochem perplex interface 
@@ -88,6 +90,8 @@ function worker()
 			comp = requested[i,2:length(COMPOSITION_ELEMENTS)+1]
 			tc1 = requested[i,findfirst(isequal("geotherm"),PERPLEX_ELEMENTS)]
 			layers = requested[i,findfirst(isequal("upper"),PERPLEX_ELEMENTS):findfirst(isequal("lower"),PERPLEX_ELEMENTS)]
+			exhumation = requested[i,findfirst(isequal("exhumed"),PERPLEX_ELEMENTS)]
+
 			if index == -1 # out of real samples 
 				break
 			end
@@ -122,7 +126,7 @@ function worker()
             # Find per-layer mean for each property 
             p_layers = [l*dpdz for l in layers] # convert depths to pressures 
             pressure = seismic[p_label]
-            upper = pressure .<= p_layers[1]
+			upper = (pressure .> exhumation*dpdz) .& (pressure .<= p_layers[1])
             middle = (pressure .> p_layers[1]) .& (pressure .<= p_layers[2])
             lower = (pressure .> p_layers[2]) .& (pressure .<= p_layers[3])
             for prop_i in 1:length(prop_labels)
@@ -130,7 +134,7 @@ function worker()
             	results[1,prop_i+1,1,i] = 1/(nanmean(1 ./ seismic[prop][upper]))
             	results[1,prop_i+1,2,i] = 1/(nanmean(1 ./ seismic[prop][middle]))
             	results[1,prop_i+1,3,i] = 1/(nanmean(1 ./ seismic[prop][lower]))
-            	# Error 
+            	# Std in those properties 
             	results[2,prop_i+1,1,i] = nanstd(seismic[prop][upper])
             	results[2,prop_i+1,2,i] = nanstd(seismic[prop][middle])
             	results[2,prop_i+1,3,i] = nanstd(seismic[prop][lower])

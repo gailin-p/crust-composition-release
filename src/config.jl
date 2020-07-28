@@ -10,7 +10,7 @@ const PERPLEX_COMPOSITION_ELTS = ["SIO2", "TIO2", "AL2O3", "FEO", "MGO", "CAO", 
 const RESAMPLED_ELEMENTS = vcat(COMPOSITION_ELEMENTS, ["Latitude", "Longitude", "Age"])
 
 # All elements output by resampleEarthChem and sent to perplex 
-const PERPLEX_ELEMENTS = vcat(["index"], RESAMPLED_ELEMENTS, "geotherm", "upper", "middle", "lower")
+const PERPLEX_ELEMENTS = vcat(["index"], RESAMPLED_ELEMENTS, "geotherm", "upper", "middle", "lower","exhumed")
 
 const UPPER="upper"
 const MIDDLE="middle"
