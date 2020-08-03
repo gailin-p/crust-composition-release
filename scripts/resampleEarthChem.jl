@@ -181,10 +181,13 @@ bins = parsed_args["bin_geotherms"]
 if bins == 1
     outtable[:,findfirst(isequal("geotherm"), PERPLEX_ELEMENTS):findfirst(isequal("lower"), PERPLEX_ELEMENTS)] = 
         crustDistribution.getCrustParams(size(outtable,1), uncertain=true)
+
     if parsed_args["exhume"]
-        outtable[:,findfirst(isequal("exhumed"), PERPLEX_ELEMENTS)] = rand(1:.1:10) # km 
+        outtable[:,findfirst(isequal("exhumed"), PERPLEX_ELEMENTS)] = 
+            rand(1:.1:10, size(outtable,1)) # km 
     else
-        outtable[:,findfirst(isequal("exhumed"), PERPLEX_ELEMENTS)] = 0 # km 
+        outtable[:,findfirst(isequal("exhumed"), PERPLEX_ELEMENTS)] = 
+            fill(0, size(outtable,1)) # km 
     end 
 
     # Write accepted samples to file
