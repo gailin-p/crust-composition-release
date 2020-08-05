@@ -103,7 +103,7 @@ function worker()
         	# Run perplex
         	perplex_configure_geotherm(perplex, scratch, comp, PERPLEX_COMPOSITION_ELTS,
                 P_range, 273.15, geotherm, dataset=dataset, solution_phases=solutions,
-                excludes="", index=rank, npoints=npoints)
+                excludes="qL\n", index=rank, npoints=npoints)
             seismic = perplex_query_seismic(perplex, scratch, index=rank)
 
             # discard below first NaN or 0 value in any property 
