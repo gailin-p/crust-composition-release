@@ -59,8 +59,9 @@ dpdz = 2900. * 9.8 / 1E5 * 1E3
 # For now, use fluid and throw away results with NaN or 0 seismic properties. 
 solutions = "O(HP)\nOpx(HP)\nOmph(GHP)\nGt(HP)\noAmph(DP)\nGlTrTsPg\nT\nB\nAnth\nChl(HP)"*
 		"\nBio(TCC)\nMica(CF)\nCtd(HP)\nIlHm(A)\nSp(HP)\nSapp(HP)\nSt(HP)\nfeldspar"*
-		"\nDo(HP)\nF\n"
+		"\nDo(HP)\n"
 npoints = 20
+fluid_endmembers = "abL\nanL\ndiL\nenL\nfaL\nfliq\nfoL\nkspL\nmliq\nqL\nsiL\nq8L\nfa8L\nfo8L\nsil8L\n"
 
 # Perplex labels used by StatGeochem perplex interface 
 prop_labels = ["rho,kg/m3","vp,km/s","vp/vs"]
@@ -103,7 +104,7 @@ function worker()
         	# Run perplex
         	perplex_configure_geotherm(perplex, scratch, comp, PERPLEX_COMPOSITION_ELTS,
                 P_range, 273.15, geotherm, dataset=dataset, solution_phases=solutions,
-                excludes="qL\n", index=rank, npoints=npoints)
+                excludes=fluid_endmembers, index=rank, npoints=npoints)
             seismic = perplex_query_seismic(perplex, scratch, index=rank)
 
             # discard below first NaN or 0 value in any property 
