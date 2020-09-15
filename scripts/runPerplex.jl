@@ -158,7 +158,7 @@ function head()
 	writeOptions("data/"*parsed_args["data_prefix"]*"/runPerplex_options_$(parsed_args["geotherm_bin"]).csv", parsed_args)
 	# Load data used by head 
 	fileName = "data/"*parsed_args["data_prefix"]*"/bsr_ignmajors_$(parsed_args["geotherm_bin"]).csv"
-	ign = readdlm(fileName, ',')
+	ign, header = readdlm(fileName, ',', header=true)
 	n_samples = size(ign,1)
 	output = fill(-1.0,(2,4,3,n_samples+n)) # Collect data. extra space for last worker run
 

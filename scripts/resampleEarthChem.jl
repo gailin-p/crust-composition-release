@@ -31,7 +31,7 @@ include("../src/config.jl") # constants defined here
 include("../src/utilities.jl")
 
 s = ArgParseSettings()
-@add_arg_table s begin
+@add_arg_table! s begin
     "--data_prefix", "-o"
         help = "Folder for output data files"
         arg_type= String
@@ -131,8 +131,8 @@ for elt in RESAMPLED_ELEMENTS
     ign["err"][elt] = ign["err"][elt][anhydrousnorm]
 end 
 
-# Set undefined elements to average. TODO is this right?
-for e in RESAMPLED_ELEMENTS
+# Set undefined elements for bulk elts to average, so they don't go NaN in resample. 
+for e in COMPOSITION_ELEMENTS
     ign[e][isnan.(ign[e])] .= nanmean(ign[e])
 end
 
@@ -160,10 +160,13 @@ else
     resampled = bsresample(ign, parsed_args["num_samples"], RESAMPLED_ELEMENTS)
 end
 
+println("Num resampled $(length(keys(resampled)))")
+
 # Write ignmajors
 
 # Create 2d array of out element data to export
-outtable = Array{Float64,2}(undef, length(resampled["SiO2"]), length(PERPLEX_ELEMENTS))
+outtable = Array{Float64,2}(undef, (length(resampled["SiO2"]), length(PERPLEX_ELEMENTS)))
+println("Size outtable $(size(outtable))")
 for i = 1:length(RESAMPLED_ELEMENTS)
     outtable[:,i+1] = resampled[RESAMPLED_ELEMENTS[i]]
 end
@@ -191,13 +194,15 @@ if bins == 1
     end 
 
     # Write accepted samples to file
+    header = reshape(PERPLEX_ELEMENTS, (1, length(PERPLEX_ELEMENTS)))
     dir = parsed_args["data_prefix"]
     path = "data/"*dir*"/bsr_ignmajors_1.csv"
-    writedlm(path, round.(outtable, digits=5), ",")
+    writedlm(path, vcat(header, round.(outtable, digits=5)), ",")
 else # Replication and bins required! 
     bin_boundaries = crustDistribution.binBoundaries(bins)
     for (i, bin_bottom) in enumerate(bin_boundaries[1:end-1])
         bin_top = bin_boundaries[i+1]
+        println("Resampling bin $i from $bin_bottom to $bin_top...")
         outtable[:,length(RESAMPLED_ELEMENTS)+2:end-1] = 
             crustDistribution.getCrustParams(bin_bottom, bin_top, size(outtable,1), uncertain=true)
 
@@ -208,6 +213,8 @@ else # Replication and bins required!
             outtable[:,findfirst(isequal("exhumed"), PERPLEX_ELEMENTS)] = 
                 fill(0, size(outtable,1)) # km 
         end 
+
+
 
         # Write this outtable before doing the next 
         dir = parsed_args["data_prefix"]
