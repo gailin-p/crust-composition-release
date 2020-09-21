@@ -2,20 +2,22 @@
 Data from Crust1.0 to invert. 
 
 Allows choice of age models. 
+
+Requires user to load config.jl and crustDistribution.jl
 """
 
-include("crustDistribution.jl")
-include("config.jl")
 
 using MAT
+using NetCDF
 using StatGeochem
 using StatsBase
 using Statistics
 using Test 
 using Random
 
-# one std relative error 
-uncertainty_dat = matread("igncn1.mat")["err2srel"]
+# one std relative error. If running from jupyter notebook, need relative path 
+uncertainty_dat = isfile("igncn1.mat") ? matread("igncn1.mat")["err2srel"] : matread("../igncn1.mat")["err2srel"]
+
 # Now using std as error, see getAllSeismic
 # relerr_rho = uncertainty_dat["Rho"]/2
 # relerr_vp = uncertainty_dat["Vp"]/2
@@ -23,6 +25,7 @@ uncertainty_dat = matread("igncn1.mat")["err2srel"]
 # relerr_rho = .05 # Huang et al error estimate: 1 std = 5% err  
 # relerr_vp = .05
 # relerr_vs = .05
+println(keys(uncertainty_dat))
 relerr_tc1 = uncertainty_dat["tc1Crust"]/2
 relerr_crust = uncertainty_dat["Crust"]/2 # for crust1.0
 
@@ -126,7 +129,8 @@ Same idea as getAllSeismic, but return fountain/rudnick data. Only returns vp.
 layer: 6, 7, or 8 (upper, middle, lower)
 """
 function FRSeismic(layer::Integer; model::Integer=2, n::Integer=400, resample::Bool=true)
-  dat, header = readdlm("Fountain-Rudnick.csv", ',', header=true)
+  dat, header = isfile("Fountain-Rudnick.csv") ? readdlm("Fountain-Rudnick.csv", ',', header=true) : 
+    readdlm("../Fountain-Rudnick.csv", ',', header=true)
   header = header[:]
 
   # Get data 
@@ -157,20 +161,84 @@ By default, resample with Tc1 ages
 Optionally add a systematic bias to Crust1.0 seismic data after resampling. 
 """
 function getAllSeismic(layer::Integer; 
-  ageModel::AgeModel=Tc1Age(), n::Integer=50000, resample::Bool=true, systematic::Bool=false, latlong::Bool=false)
+  ageModel::AgeModel=Tc1Age(), n::Integer=50000, resample::Bool=true, systematic::Bool=false, 
+  latlong::Bool=false, dataSrc::String="Crust1.0")
     if !(layer in [6,7,8])
         throw(ArgumentError("Layer must be 6, 7, or 8 (crysteline Crust1 layers)"))
     end
 
-    # Gather data... 
-    lats = crustDistribution.all_lats # Lats where both tc1 and crust1.0 defined 
-    longs = crustDistribution.all_longs
-    geotherms = crustDistribution.depth[:,1]
-    crustbase = crustDistribution.depth[:,4]
+   if dataSrc == "Crust1.0"
+      # Gather data... 
+      lats = crustDistribution.all_lats # Lats where both tc1 and crust1.0 defined 
+      longs = crustDistribution.all_longs
+      geotherms = crustDistribution.depth[:,1]
+      crustbase = crustDistribution.depth[:,4]
+
+      (vp, vs, rho) = find_crust1_seismic(lats, longs, layer)
+
+    elseif dataSrc == "Shen"
+      # Get data 
+      # Dims: longitude latitude depth. NaN-value = 9999.0
+      vp_us = Array{Float64}(ncread("data/US.2016.nc", "vp")) .|> x -> x==9999.0 ? NaN : x
+      vs_us = Array{Float64}(ncread("data/US.2016.nc", "vsv")) .|> x -> x==9999.0 ? NaN : x
+      rho_us = Array{Float64}(ncread("data/US.2016.nc", "rho")) .|> x -> x==9999.0 ? NaN : x
+      rho_us = rho_us .* 1000 # unit conversion 
+
+      # values corresponding to each axis of the above data 
+      depth_us = Array{Float64}(ncread("data/US.2016.nc", "depth"))
+      latitude_us = Array{Float64}(ncread("data/US.2016.nc", "latitude"))
+      # values range, bizarely, from 235 to 295. This puts it in the right range but idk if correct. 
+      longitude_us = Array{Float64}(ncread("data/US.2016.nc", "longitude") .- 360)
+
+      # Get data as 1d array  
+      lats = repeat(latitude_us, inner=length(longitude_us)) # repeat each lat for length of longs
+      longs = repeat(longitude_us, outer=length(latitude_us)) # repeat sequence of lats for each lat 
+      vp = fill(NaN, length(lats))
+      vs = fill(NaN, length(lats))
+      rho = fill(NaN, length(lats))
+
+      layer_tops = -1 .* find_crust1_base(lats, longs, layer-1) # for each lat/long, top of layer 
+      layer_bottoms = -1 .* find_crust1_base(lats, longs, layer) # for each lat/long, bottom of layer 
+      i = 1
+      for lat in 1:length(latitude_us)
+        for long in 1:length(longitude_us)
+          # Depth of middle of this layer at this lat/long 
+          depth = layer_tops[i] + (layer_bottoms[i] - layer_tops[i])/2 
+          #println("depth of center of layer $(depth)")
+
+          # Corresponding index of depth availible from Shen seismic data 
+          shen_depth = findfirst(x->x>=depth, depth_us)
+          if rand() >= .5 
+            shen_depth -= 1 # half the time, use the shallower option 
+          end 
+
+          vp[i] = vp_us[long,lat,shen_depth]
+          vs[i] = vs_us[long,lat,shen_depth]
+          rho[i] = rho_us[long,lat,shen_depth]
+
+          i += 1
+        end
+      end 
+
+      geotherms = find_tc1_crust(lats, longs) # Geotherm
+      crustbase = -1 .* find_crust1_base(lats, longs, 8) # base of lower crust 
+
+      # TODO nicer to check before doing calculations on all lats longs but I'm lazy 
+      cont = map(c -> continents[c], find_geolcont(lats,longs))
+      good = .~ (isnan.(vp) .| isnan.(rho) .| isnan.(vs) .| isnan.(geotherms) .| (cont .== "NA"))
+      println("$(sum(good)) good values from Shen et al.")
+      vp = vp[good]
+      vs = vs[good]
+      rho = rho[good]
+      lats = lats[good]
+      longs = longs[good]
+      geotherms = geotherms[good]
+      crustbase=crustbase[good]
+    else 
+      throw("Unrecognized data source")
+    end 
 
     ages, age_uncertainty = sampleAge(lats, longs, ageModel)
-
-    (vp, vs, rho) = find_crust1_seismic(lats, longs, layer)
 
     err_rho = std(rho)
     err_vp = std(vp)
@@ -181,7 +249,8 @@ function getAllSeismic(layer::Integer;
         # Probability of keeping a given data point when sampling:
         # We want to select roughly one-fith of the full dataset in each re-sample,
         # which means an average resampling probability <p> of about 0.2
-        p = 1.0 ./ ((k .* median(5.0 ./ k)) .+ 1.0)
+        #p = 1.0 ./ ((k .* median(5.0 ./ k)) .+ 1.0)
+        p = k .* .2/mean(k)
 
         if latlong 
             samples = hcat(rho, vp, vs, geotherms, crustbase, ages, lats, longs)
@@ -203,7 +272,7 @@ function getAllSeismic(layer::Integer;
         vp = resampled[:,2]
         vs = resampled[:,3]
         geotherms = resampled[:,4]
-        depth = resampled[:,5]
+        crustbase = resampled[:,5]
         ages = resampled[:,6]
     end
 
@@ -214,8 +283,11 @@ function getAllSeismic(layer::Integer;
     end 
 
     if latlong 
-        return ((rho, vp, vp ./ vs, geotherms), (depth, ages, lats, longs))
+        return ((rho, vp, vp ./ vs, geotherms), (crustbase, ages, lats, longs))
     else
         return ((rho, vp, vp ./ vs, geotherms), (ages))
     end 
 end
+
+
+
