@@ -179,11 +179,15 @@ normalizeComp!(view(outtable, :, 2:length(COMPOSITION_ELEMENTS)+1))
 
 outtable[:,1] = Array(1:size(outtable,1)) # Set indices
 
-# Apply geotherms. Either any old geotherm will do or we need to replicate and apply different ones.
+# Apply geotherms. 
 bins = parsed_args["bin_geotherms"]
-if bins == 1
-    outtable[:,findfirst(isequal("geotherm"), PERPLEX_ELEMENTS):findfirst(isequal("lower"), PERPLEX_ELEMENTS)] = 
-        crustDistribution.getCrustParams(size(outtable,1), uncertain=true)
+bin_boundaries = crustDistribution.binBoundaries(bins)
+
+for (i, bin_bottom) in enumerate(bin_boundaries[1:end-1])
+    bin_top = bin_boundaries[i+1]
+    println("Resampling bin $i from $bin_bottom to $bin_top...")
+    outtable[:,length(RESAMPLED_ELEMENTS)+2:end-1] = 
+        crustDistribution.getCrustParams(bin_bottom, bin_top, size(outtable,1), uncertain=true)
 
     if parsed_args["exhume"]
         outtable[:,findfirst(isequal("exhumed"), PERPLEX_ELEMENTS)] = 
@@ -193,36 +197,15 @@ if bins == 1
             fill(0, size(outtable,1)) # km 
     end 
 
-    # Write accepted samples to file
-    header = reshape(PERPLEX_ELEMENTS, (1, length(PERPLEX_ELEMENTS)))
+
+
+    # Write this outtable before doing the next 
     dir = parsed_args["data_prefix"]
-    path = "data/"*dir*"/bsr_ignmajors_1.csv"
+    mkpath("data/"*dir) # make if does not exist
+
+    path = "data/"*dir*"/bsr_ignmajors_$(i).csv"
+    header = reshape(PERPLEX_ELEMENTS, (1, length(PERPLEX_ELEMENTS)))
     writedlm(path, vcat(header, round.(outtable, digits=5)), ",")
-else # Replication and bins required! 
-    bin_boundaries = crustDistribution.binBoundaries(bins)
-    for (i, bin_bottom) in enumerate(bin_boundaries[1:end-1])
-        bin_top = bin_boundaries[i+1]
-        println("Resampling bin $i from $bin_bottom to $bin_top...")
-        outtable[:,length(RESAMPLED_ELEMENTS)+2:end-1] = 
-            crustDistribution.getCrustParams(bin_bottom, bin_top, size(outtable,1), uncertain=true)
-
-        if parsed_args["exhume"]
-            outtable[:,findfirst(isequal("exhumed"), PERPLEX_ELEMENTS)] = 
-                rand(1:.1:10, size(outtable,1)) # km 
-        else
-            outtable[:,findfirst(isequal("exhumed"), PERPLEX_ELEMENTS)] = 
-                fill(0, size(outtable,1)) # km 
-        end 
-
-
-
-        # Write this outtable before doing the next 
-        dir = parsed_args["data_prefix"]
-        mkpath("data/"*dir) # make if does not exist
-
-        path = "data/"*dir*"/bsr_ignmajors_$(i).csv"
-        writedlm(path, round.(outtable, digits=5), ",")
-    end 
 end 
 
 

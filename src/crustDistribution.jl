@@ -131,20 +131,9 @@ Return depths
 TODO return dist values (gaussian, use uncertainty as std?) not exact
 """
 function getCrustParams(n::Int; uncertain::Bool=false)
-    samples = Array{Float64, 2}(undef, (n,4))
-    for i in 1:n
-        rand_i = sample(Weights(weights))
-        this_sample = depth[rand_i,:] # geotherm, base of upper, middle, lower
-        if uncertain
-            tc1Std = this_sample[1]*relerr_tc1 # standard deviation is relative to geotherm 
-            crustStd = this_sample[3]*relerr_tc1 # Use middle crust to get std TODO ??? 
-            samples[i,:] = [this_sample[1]+(randn()*tc1Std), this_sample[2]+(randn()*crustStd), 
-                this_sample[3]+(randn()*crustStd), this_sample[4]+(randn()*crustStd)] 
-        else 
-            samples[i,:] = this_sample
-        end
-    end
-    return samples
+    bottom = minimum(depth[:,1]) -1
+    top = maximum(depth[:,1]) +1
+    return getCrustParams(bottom, top, n, uncertain=uncertain)
 end
 
 
