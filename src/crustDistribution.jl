@@ -17,14 +17,15 @@ using Statistics
 using Random
 
 # For building querries 
-dataPath = "data/crust1Layers.jld"
+dataPath = isfile("../data/crust1Layers.jld") ? "../data/crust1Layers.jld" : "data/crust1Layers.jld"
 lat_range = -89:90
 long_range = -180:179
 nlat = length(lat_range)
 nlong = length(long_range)
 
 # For resampling 
-uncertainty_dat = matread("igncn1.mat")["err2srel"]
+#  If running from jupyter notebook, need relative path 
+uncertainty_dat = isfile("igncn1.mat") ? matread("igncn1.mat")["err2srel"] : matread("../igncn1.mat")["err2srel"]
 relerr_tc1 = uncertainty_dat["tc1Crust"]/2
 
 # TODO what's a reasonable lat/long error for crust 1.0? For now, use 1 deg lat/long 

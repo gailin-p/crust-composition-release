@@ -3,8 +3,6 @@ using DelimitedFiles
 using StatGeochem 
 using HDF5
 
-include("config.jl")
-
 """
 Keep a running mean
 m mean so far 
@@ -52,6 +50,51 @@ function writeOptions(filename, options)
 	end 
 	writedlm(filename, out, ",")
 end 
+
+"""
+For values at each location in latitide/longitude, find average value per lat/long grid square.
+Return lat, long, ave value for each square. 
+"""
+function areaAverage(latitude::Array{Float64,1}, longitude::Array{Float64,1}, vals::Array{Float64,1})
+	m = Dict{Tuple, Array}() # map from lat/long to list of values
+	for i in 1:length(latitude)
+		a = get!(m, (floor(latitude[i]), floor(longitude[i])), [])
+		append!(a, vals[i])
+	end 
+	for k in keys(m)
+		m[k] = [nanmean(Array{Float64}(m[k]))]
+	end 
+
+	lats = [k[1] for k in keys(m)]
+	longs = [k[2] for k in keys(m)]
+	val = [mean(v) for v in values(m)]
+
+	good = .!(isnan.(lats) .| isnan.(longs) .| isnan.(val))
+
+	return lats[good], longs[good], val[good]
+end 
+
+"""
+For plotting latitude and longitude data.
+Assumes lat/long pairs are unique (run after areaAverage)
+Returns grid with NaN at any missing values 
+"""
+function globe(lats, longs, vals)
+    globe = fill(NaN, (Int(1+maximum(lats)-minimum(lats)), Int(1+maximum(longs)-minimum(longs))))
+    for i in 1:length(lats)
+        y = Int(lats[i]+1-(minimum(lats)))
+        x = Int(longs[i]+1-(minimum(longs)))
+        globe[y,x] = vals[i]
+    end 
+    return globe 
+end 
+
+function plotglobe(k::String, dat, header)
+    return globe( areaAverage( 
+    	dat[:, findfirst(isequal("sample_lat"), header)], 
+    	dat[:, findfirst(isequal("sample_long"), header)], 
+    	dat[:, findfirst(isequal(k), header)])...)
+end
 
 """
 Take area averages of composition samples and corresponding Perple_X samples. 
