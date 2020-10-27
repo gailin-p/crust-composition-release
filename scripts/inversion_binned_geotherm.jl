@@ -57,13 +57,17 @@ s = ArgParseSettings()
     	arg_type = Bool
     	default = false
     "--crack"
-    	help = "Mean of upper crust crack porosity. -1 means no cracking."
+    	help = "Mean of upper crust crack porosity. -1 means no cracking or pore space."
     	arg_type = Float64  
     	default = -1.0
-    "--allow_spheres"
-    	help = "Allow shapes other than cracks (aspect ratio < .05) in upper crust"
-    	arg_type = Bool  
-    	default = false
+    "--pore"
+    	help = "Mean of upper crust sphere/needle porosity."
+    	arg_type = Float64  
+    	default = .15
+    "--percent_crack"
+    	help = "How many samples do we apply cracking to?"
+    	arg_type = Float64  
+    	default = 1.0
 end
 parsed_args = parse_args(ARGS, s)
 outputPath = "data/"*parsed_args["data_prefix"]*"/"*parsed_args["name"]*"/"
@@ -83,8 +87,12 @@ function run(parsed_args, outputPath)
 			ignFile = "data/"*parsed_args["data_prefix"]*"/bsr_ignmajors_1.csv"
 			ign, header = readdlm(ignFile, ',', header=true)
 			n = size(ign, 1)
-			profiles = Array{Crack,1}([random_cracking(parsed_args["crack"], [0.0, 0.5, 0.0, 0.5], 
-				parsed_args["allow_spheres"] ? [1/3, 1/3, 1/3] : [1.0, 0.0, 0.0]) for i in 1:n])
+			liquid_weights = [parsed_args["percent_crack"]/2, parsed_args["percent_crack"]/2, # dry, water 
+				0, 1- parsed_args["percent_crack"]] # magma, no cracking 
+			if sum(liquid_weights) != 1 
+				error("Sum of crack weights does not equal 1. Is your percent_crack > 1?")
+			end
+			profiles = Array{Crack,1}([random_cracking(parsed_args["crack"], parsed_args["pore"], liquid_weights) for i in 1:n])
 			write_profiles(profiles, crackFile)
 		end 
 	end 
