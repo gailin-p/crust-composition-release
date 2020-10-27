@@ -7,13 +7,19 @@ using Plots; gr();
 
 include("../src/inversionModel.jl")
 include("../src/invertData.jl")
+include("../src/config.jl")
+include("../src/crustDistribution.jl")
 
 s = ArgParseSettings()
 @add_arg_table s begin
     "--data_prefix", "-d"
-        help = "Folder for data files"
+        help = "Folder for perplex output"
         arg_type= String
         default="test"
+    "--name"
+        help = "Name of model run"
+        arg_type= String
+        default="default"
     "--show_test"
     	help = "Plot Crust1.0 test points on top of model plot?"
     	arg_type=Bool
@@ -21,7 +27,12 @@ s = ArgParseSettings()
 end
 parsed_args = parse_args(ARGS, s)
 
-models = makeModels(parsed_args["data_prefix"], modelType=RangeModel)
+
+crackFile = "data/$(parsed_args["data_prefix"])/$(parsed_args["name"])/crack_profile.csv"
+if !isfile(crackFile)
+	crackFile = ""
+end
+models = makeModels(parsed_args["data_prefix"], modelType=RangeModel, crackFile=crackFile)
 
 # histograms of vp, vs, rho for each model 
 plots = [] 
@@ -31,7 +42,7 @@ for layer in LAYER_NAMES
 	end 
 end 
 
-outputPath = "data/"*parsed_args["data_prefix"]*"/output/range_model"
+outputPath = "data/$(parsed_args["data_prefix"])/$(parsed_args["name"])/output/range_model"
 mkpath(outputPath)
 
 # for (i, p) in enumerate(plots)

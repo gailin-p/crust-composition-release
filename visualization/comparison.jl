@@ -67,6 +67,9 @@ results_comparerf = [
 # Updated as of 5/21/2020
 results_all_versions = [
 	ResultWithError("Base model", [58.5, 64.8, 56.1], [0.0303 , 0.0332 , 0.0336], [1,2,3], ""),
+	ResultWithError("Shen et al.", [59.1, 62.3, 57.6], [0.0317 , 0.0346 , 0.0389], [1,2,3], "remote/latlong_weighted, seismic data set = Shen"),
+	ResultWithError("Vp only", [61.38, 63.33, 54.18], [0.0365 , 0.0403 , 0.035], [1,2,3], "remote/latlong_weighted, model = vprange"),
+	ResultWithError("Vp and Rho only", [64.6, 66.5, 57.9], [0.0286 , 0.0312 , 0.0345], [1,2,3], "remote/latlong_weighted, model=vprhorange"),
 	ResultWithError("All earthchem samples, modified H&P", [54.9, 62.5, 53.8], [0.0279 , 0.0379 , 0.0329], [1,2,3], "remote/bulk_binned"),
 	ResultWithError("Area-averaged Igneous samples", [59.7, 65.0, 58.1], [0.0289 , 0.0247 , 0.03], [1,2,3], "areaAve"),
 	ResultWithError("All earthchem samples, base H&P", [55.3, 64.0, 56.3], [0.0276 , 0.037 , 0.0362], [1,2,3], "remote/bulk_binned_hp02"),
@@ -78,20 +81,20 @@ results_all_versions = [
 	ResultWithError("10% seismic bin", [57.3, 63.7, 57.1], [0.031 , 0.0385 , 0.04], [1,2,3], "remote/latlong_weighted_bin10")
 ]
 
-p = plot(xlabel="% SiO2", yflip=true, size=(300,500), legend=:outerbottom, legendtitlefontsize=9,
-	fg_legend = :transparent, framestyle=:box)
+p = plot(xlabel="% SiO2", yflip=true, size=(300,500), legend=false) #legend=:outerbottom, legendtitlefontsize=9,
+	#fg_legend = :transparent, framestyle=:box)
 
-for (r, result) in enumerate(results)
+for (r, result) in enumerate(results_all_versions)
 	if typeof(result) == Result
 		plot!(result.composition, result.layers, label=result.name, markershape=:circle, markerstrokecolor=:auto)
 	elseif typeof(result) == ResultWithError
 		if r == 1
 			plot!(result.composition, result.layers, xerror=(result.sem .* 2), 
-				#color=:blue,linewidth=2,
+				color=:blue,linewidth=2,
 				label=result.name, markershape=:circle, markerstrokecolor=:auto)
 		else 
 			plot!(result.composition, result.layers, xerror=(result.sem .* 2), 
-				#color=:blue, markersize=2, linealpha=.5,
+				color=:blue, markersize=2, linealpha=.5,
 				label=result.name, markershape=:circle, markerstrokecolor=:auto)
 		end
 	else 
@@ -101,8 +104,11 @@ end
 
 plot!(yticks=(1:3, ["Upper\ncrust","Middle\ncrust","Lower\ncrust"]))
 
-savefig("output/comparison.pdf")
+savefig("output/comparison_all_results.pdf")
 
+sorted = sort(results_all_versions, by = x->x.composition[1])
+println("From left to right in upper crust, results are: 
+	$([r.name for r in sorted])")
 
 
 

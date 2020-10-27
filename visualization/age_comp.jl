@@ -1,5 +1,5 @@
 """
-Create main figure ()
+Create main figure (composition of upper, middle, and lower crust over time)
 
 """
 
@@ -8,31 +8,29 @@ using DelimitedFiles
 using Plots; gr();
 using Statistics
 
+include("../src/bin.jl")
 include("../src/config.jl")
 include("../src/crustDistribution.jl")
 include("../src/invertData.jl")
-include("../src/bin.jl")
 
 s = ArgParseSettings()
 @add_arg_table s begin
-    "--data_prefix", "-d"
-        help = "Folder for data files"
+    "--data_path", "-p"
+        help = "Path to model output"
         arg_type= String
-        default="remote/latlong_weighted"
+        required=true
     "--compare_to", "-c"
-    	help = "Other results to compare to this one."
+    	help = "Other results to compare to this one. Full paths to result dirs."
     	arg_type= String
     	nargs = '*'
     "--titles", "-t"
     	help = "Title for each of compare to datasets. Base first, then each of comapre_to in order."
     	arg_type = String
     	nargs = '*'
-    "--result_age_model"
-    	help = "Use different age model for compare_to data set? Options: earthchem, tc1"
-    	arg_type = String 
-    	default = "earthchem"
 end 
+
 parsed_args = parse_args(ARGS, s)
+## Defaults for compare variables: default to corresponding main result variable. 
 if length(parsed_args["titles"]) < (length(parsed_args["compare_to"]) + 1)
 	append!(parsed_args["titles"], fill("no title provided", (length(parsed_args["compare_to"]) + 1)-length(parsed_args["titles"])))
 end 
@@ -56,7 +54,7 @@ function find_age_aves(files)
 		age_index = findfirst(isequal("sample_age"), header) # Age 
 		good = ((.~isnan.(result[:,si_index])) .& (.~isnan.(result[:,age_index])))
 
-		# Oversampling ratio 
+		# Oversampling ratio -- IS THIS RIGHT???
 		n_original = length(crustDistribution.all_lats) # number of 1x1 grid cells w data 
 		n_resampled = size(result, 1) 
 
@@ -69,7 +67,7 @@ function find_age_aves(files)
 	return ages, age_results, age_1std
 end 
 
-files = ["data/"*parsed_args["data_prefix"]*"/output/results-"*layer*"-range-earthchem.csv" for layer in LAYER_NAMES]
+files = ["$(parsed_args["data_path"])/results-$layer.csv" for layer in LAYER_NAMES]
 ages, age_results, age_1std = find_age_aves(files)
 
 
@@ -101,13 +99,14 @@ end
 # plot!(p, [200], [52.3], seriestype=:scatter, marker=8,markershape=:star5, markercolor=:green, label="")
 
 
-# Plot exposed. Always use latlong_weighted so have same comparison... 
+# Plot exposed. Always use base so have same comparison... 
+# TODO this will need to change when re-do base w new elts
 tmin = 0
 tmax = 4000
 nbins = 4
-samplePath = "data/remote/latlong_weighted/bsr_ignmajors_1.csv"
-ign = readdlm(samplePath, ',')
-age_i = findfirst(isequal("Age"),PERPLEX_ELEMENTS)
+samplePath = "data/remote/base/bsr_ignmajors_1.csv"
+ign, h = readdlm(samplePath, ',', header=true)
+age_i = 14 #findfirst(isequal("Age"),PERPLEX_ELEMENTS)
 si_i = findfirst(isequal("SiO2"),PERPLEX_ELEMENTS)
 original = matread(IGN_FILE)
 age_centers, elt_means, elt_errors = bin(ign[:,age_i], ign[:,si_i],
@@ -128,12 +127,12 @@ plot!(p, age_centers, elt_means, color=:pink,
 # If some to compare to, compare to them. 
 if length(parsed_args["compare_to"]) > 0
 	for (d, datum) in enumerate(parsed_args["compare_to"])
-		files = ["data/"*datum*"/output/results-"*layer*"-range-$(parsed_args["result_age_model"]).csv" for layer in LAYER_NAMES]
+		files = ["$datum/results-$layer.csv" for layer in LAYER_NAMES]
 		ages, age_results, age_1std = find_age_aves(files)
 
 		for i in 1:3 # layers 
 			color = [:blue, :orange, :green][i]
-			linestyle = [:dash, :dot, :dashdot, :dashdotdot][d]
+			linestyle = [:dash, :dot, :dashdot, :dashdotdot, :dash][d]
 			plot!(ps[i], ages[1:end-1], age_results[i,:], yerror=age_1std[i,:], label=parsed_args["titles"][d+1], markerstrokecolor=color, 
 				linecolor=color, markercolor=color, linestyle=linestyle)
 			plot!(p, ages[1:end-1], age_results[i,:], yerror=age_1std[i,:], label=LAYER_NAMES[i], markerstrokecolor=color, 
@@ -144,12 +143,12 @@ if length(parsed_args["compare_to"]) > 0
 end
 
 
-outputPath = "data/"*parsed_args["data_prefix"]*"/output"
+outputPath = "$(parsed_args["data_path"])/output"
 mkpath(outputPath) # make if does not exist
 if length(parsed_args["compare_to"]) == 0
-	savefig(p, outputPath*"/composition-ages-range-earthchem.pdf");
+	savefig(p, outputPath*"/composition-ages.pdf");
 else 
-	savefig(p, outputPath*"/composition-ages-range-earthchem-compare.pdf");
+	savefig(p, outputPath*"/composition-ages-compare.pdf");
 	p2 = plot(ps..., size=(400,700), layout=(3,1))
-	savefig(p2, outputPath*"/composition-ages-range-earthchem-compare-split.pdf");
+	savefig(p2, outputPath*"/composition-ages-compare-split.pdf");
 end
