@@ -111,8 +111,7 @@ function random_cracking(mean_crack_porosity::Number=.007, mean_pore_porosity::N
 	cracking_fn = sample([(needle_properties, "needle"), (sphere_properties, "sphere")], Weights(shape_weights))
 
 
-	# What porosity? 
-	#porosity = rand() * .15 # uniform distribution of porosities, 0 to .15
+	# What pore space porosity? 
 	d_pore = LogNormal(log(mean_pore_porosity), 1)
 	porosity = min(.5, rand(d_pore))
 
@@ -163,6 +162,9 @@ end
 Apply cracking to these specific props 
 """
 function apply_cracking(K0, mu0, rho0, fn::Function, porosity, fluid_density, fluid_K)
+	if porosity == 0 
+		return K0, mu0, rho0
+	end
 	poissonsd, KdK0 = fn(porosity, poissons(K0, mu0))
 	Kd = KdK0*K0 # Dry k 
 	mud = mu_from_poissons(Kd, poissonsd) # Dry mu 
@@ -177,37 +179,19 @@ function apply_cracking(rho, vp, vpvs, profile::CrackProfile)
 	vs = vp/vpvs
 	K0, mu0 = moduli_from_speeds(vp, vs, rho)
 
-	if profile.porosity == 0 
-		rho_w_pore = rho 
-		vpw_pore = vp
-		vsw_pore = vp / vpvs
-	else 
-	# try	
-		### Effect on seismic velocity from pores (speheres and needles)
-		Kw, mud, rho_w_pore = apply_cracking(K0, mu0, rho, 
-			profile.cracking_fn, profile.porosity, 
-			profile.fluid_density, profile.K_fluid)
-		vpw_pore, vsw_pore = speed_from_moduli(Kw, mud, rho_w_pore)
-	end 
+	### Effect on seismic velocity from pores (speheres and needles)
+	Kw, mud, rho_w_pore = apply_cracking(K0, mu0, rho, 
+		profile.cracking_fn, profile.porosity, 
+		profile.fluid_density, profile.K_fluid)
+	vpw_pore, vsw_pore = speed_from_moduli(Kw, mud, rho_w_pore)
 
-	if profile.crack_porosity == 0 
-		rho_w_crack = rho
-		vpw_crack = vp 
-		vsw_crack = vp / vpvs
-	else 
-		# # Repeat for cracking 
-		Kw, mud, rho_w_crack = apply_cracking(K0, mu0, rho, 
-			cracked_properties, profile.crack_porosity, 
-			profile.fluid_density, profile.K_fluid)
-		vpw_crack, vsw_crack = speed_from_moduli(Kw, mud, rho_w_crack)
-	end 
+	# # Repeat for cracking (on top of prior props)
+	Kw, mud, rho_w_crack = apply_cracking(Kw, mud, rho_w_pore, 
+		cracked_properties, profile.crack_porosity, 
+		profile.fluid_density, profile.K_fluid)
+	vpw_crack, vsw_crack = speed_from_moduli(Kw, mud, rho_w_crack)
 
-	# velocity and density averages
-	rho_w = 2/(1/rho_w_crack + 1/rho_w_pore)
-	vpw = 2/(1/vpw_crack + 1/vpw_pore)
-	vsw = 2/(1/vsw_crack + 1/vsw_pore)
-
-	return rho_w, vpw, vpw/vsw
+	return rho_w_crack, vpw_crack, vpw_crack/vsw_crack
 end 
 
 """
