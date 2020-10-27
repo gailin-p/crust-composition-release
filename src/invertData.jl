@@ -25,7 +25,6 @@ uncertainty_dat = isfile("igncn1.mat") ? matread("igncn1.mat")["err2srel"] : mat
 # relerr_rho = .05 # Huang et al error estimate: 1 std = 5% err  
 # relerr_vp = .05
 # relerr_vs = .05
-println(keys(uncertainty_dat))
 relerr_tc1 = uncertainty_dat["tc1Crust"]/2
 relerr_crust = uncertainty_dat["Crust"]/2 # for crust1.0
 
