@@ -24,7 +24,7 @@ s = ArgParseSettings()
     "--data_prefix", "-d"
         help = "Folder for data files"
         arg_type= String
-        default="remote/latlong_weighted"
+        default="remote/base"
     "--name"
     	help = "Name of inversion run / folder to output results"
     	arg_type = String 
@@ -57,17 +57,21 @@ s = ArgParseSettings()
     	arg_type = Bool
     	default = false
     "--crack"
-    	help = "Mean of upper crust crack porosity. -1 means no cracking or pore space."
+    	help = "Mean of upper crust total porosity."
     	arg_type = Float64  
-    	default = -1.0
-    "--pore"
-    	help = "Mean of upper crust sphere/needle porosity."
+    	default = 0.0
+    	range_tester = x -> ((x >= 0) && (x < .5))
+    "--fraction_crack"
+    	help = "% of the pore space that is cracks (very low aspect ratio). 
+    			Be careful with this, cracks have much larger effect on seismic props."
     	arg_type = Float64  
-    	default = .15
-    "--percent_crack"
+    	default = 0.0
+    	range_tester = x -> ((x >= 0) && (x <= 1))
+    "--cracked_samples"
     	help = "How many samples do we apply cracking to?"
     	arg_type = Float64  
     	default = 1.0
+    	range_tester = x -> ((x >= 0) && (x <= 1))
 end
 parsed_args = parse_args(ARGS, s)
 outputPath = "data/"*parsed_args["data_prefix"]*"/"*parsed_args["name"]*"/"
@@ -78,23 +82,24 @@ mkpath(outputPath) # make output dir
 writeOptions(outputPath*"/inversion_options.csv", parsed_args)
 
 function run(parsed_args, outputPath)
-	if parsed_args["crack"] <= 0 
-		crackFile = "" 
-	else
-		crackFile = outputPath*"crack_profile.csv"
-		if !isfile(crackFile)
-			println("Building new random cracking profiles...")
-			ignFile = "data/"*parsed_args["data_prefix"]*"/bsr_ignmajors_1.csv"
-			ign, header = readdlm(ignFile, ',', header=true)
-			n = size(ign, 1)
-			liquid_weights = [parsed_args["percent_crack"]/2, parsed_args["percent_crack"]/2, # dry, water 
-				0, 1- parsed_args["percent_crack"]] # magma, no cracking 
-			if sum(liquid_weights) != 1 
-				error("Sum of crack weights does not equal 1. Is your percent_crack > 1?")
-			end
-			profiles = Array{Crack,1}([random_cracking(parsed_args["crack"], parsed_args["pore"], liquid_weights) for i in 1:n])
-			write_profiles(profiles, crackFile)
-		end 
+	### SET UP CRACKING ### 
+	crackFile = outputPath*"crack_profile.csv"
+	if !isfile(crackFile)
+		println("Building new random cracking profiles...")
+		ignFile = "data/"*parsed_args["data_prefix"]*"/bsr_ignmajors_1.csv"
+		ign, header = readdlm(ignFile, ',', header=true)
+		n = size(ign, 1)
+		liquid_weights = [parsed_args["cracked_samples"]/2, parsed_args["cracked_samples"]/2, # dry, water 
+			0, 1- parsed_args["cracked_samples"]] # magma, no cracking 
+		crack_porosity = parsed_args["fraction_crack"] * parsed_args["crack"]
+		pore_porosity = (1-parsed_args["fraction_crack"]) * parsed_args["crack"]
+		
+		if sum(liquid_weights) != 1 
+			error("Sum of crack weights does not equal 1. Is your cracked_samples > 1?")
+		end
+
+		profiles = Array{Crack,1}([random_cracking(crack_porosity, pore_porosity, liquid_weights) for i in 1:n])
+		write_profiles(profiles, crackFile)
 	end 
 
 	### TODO: combine all these models, this is absurd -- most code is shared.
