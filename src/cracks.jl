@@ -39,11 +39,13 @@ end
 
 abstract type Crack end 
 
+# Each crack profile has a porosity for either needles or spheres, plus a crack porosity. 
 struct CrackProfile <: Crack 
 	cracking_fn::Function 
 	fluid_density::Number # 0 for dry cracks 
 	K_fluid::Number # 0 for dry cracks
 	porosity::Number
+	crack_porosity::Number
 	liquid::String
 	shape::String
 end 
@@ -55,16 +57,16 @@ struct NoCrack <: Crack end
 Return base type fields of a crack profile for saving to a .csv
 """
 function props(profile::CrackProfile)
-	return [profile.fluid_density, profile.K_fluid, profile.porosity, profile.liquid, profile.shape]
+	return [profile.fluid_density, profile.K_fluid, profile.porosity, profile.crack_porosity, profile.liquid, profile.shape]
 end 
 
 function props(profile::NoCrack)
-	return [NaN, NaN, NaN, "none", "none"]
+	return [NaN, NaN, NaN, NaN, "none", "none"]
 end 
 
 # Load data 
 # from Rivers and Carmichael 1987, "Ultrasonic Studies of Silicate Melts"
-magma_dat, header = readdlm("data/magma_moduli.csv", ',', header=true)
+magma_dat, header = isfile("data/magma_moduli.csv") ? readdlm("data/magma_moduli.csv", ',', header=true) : readdlm("../data/magma_moduli.csv", ',', header=true)
 magma_densities = magma_dat[:,3] .* 1000
 magma_K = magma_dat[:, 5]
 relerr_magma_K = .03 
@@ -79,9 +81,9 @@ relerr_water_rho = .2
 	random_cracking()
 Return a CrackProfile for a random crack/fluid profile or no cracks. 
 """
-function random_cracking(mean_crack_porosity::Number=.007, 
-	liquid_weights::Array{Float64, 1}=[.2, .2, .2, .4],
-	shape_weights::Array{Float64, 1}=[1/3, 1/3, 1/3])
+function random_cracking(mean_crack_porosity::Number=.007, mean_pore_porosity::Number=.15,
+	liquid_weights::Array{Float64, 1}=[.2, .2, .2, .4], # dry, water, magma, none 
+	shape_weights::Array{Float64, 1}=[.5, .5]) # probability of sphere vs needle 
 	# Dry, water or magma? 
 	liquid_type = sample(["d","w","m","none"], Weights(liquid_weights))
 
@@ -106,45 +108,49 @@ function random_cracking(mean_crack_porosity::Number=.007,
 	end 
 
 	# What shape pores? (name and function)
-	cracking_fn = sample([(cracked_properties, "crack"), 
-		(needle_properties, "needle"), (sphere_properties, "sphere")], Weights(shape_weights))
+	cracking_fn = sample([(needle_properties, "needle"), (sphere_properties, "sphere")], Weights(shape_weights))
 
 
 	# What porosity? 
-	if cracking_fn[2] == "crack"
-		#porosity = min(1, rand(Exponential()) * MAX_CRACK_POROSITY) 
-		d_porosity = Normal(mean_crack_porosity, .0002)
-		porosity = max(0, rand(d_porosity))
-	else 
-		porosity = rand() * .15 # uniform distribution of porosities, 0 to .15
-	end 
+	#porosity = rand() * .15 # uniform distribution of porosities, 0 to .15
+	d_pore = LogNormal(log(mean_pore_porosity), 1)
+	porosity = min(.5, rand(d_pore))
 
-	return CrackProfile(cracking_fn[1], rho, K, porosity, liquid_type, cracking_fn[2])
+	# What cracking porosity? 
+	d_porosity = LogNormal(log(mean_crack_porosity), 1) # Normal(mean_crack_porosity, .0002)
+	crack_porosity = min(.1, rand(d_porosity))
+
+	return CrackProfile(cracking_fn[1], rho, K, porosity, crack_porosity, liquid_type, cracking_fn[2])
 end 
 
+""""
+Write and read profiles from a csv file -- 
+allows for saving and later retrieving 
+cracks for a model run. 
+"""
 function get_profiles(filename::String)
-	cracking_functions = Dict([("crack", cracked_properties), ("needle", needle_properties), ("sphere", sphere_properties)])
+	cracking_functions = Dict([("needle", needle_properties), ("sphere", sphere_properties)])
 
 	(dat, header) = readdlm(filename, ',', header=true)
 	profiles = Array{Crack, 1}(undef, size(dat,1))
 	for i in 1:size(dat,1)
-		if dat[i,5] == "none"
+		if dat[i,6] == "none"
 			profiles[i] = NoCrack()
 		else 
-			profiles[i] = CrackProfile(cracking_functions[dat[i,5]], dat[i,:]...)
+			profiles[i] = CrackProfile(cracking_functions[dat[i,6]], dat[i,:]...)
 		end 
 	end 
 	return profiles 
 end 
 
 function write_profiles(profiles::Array{Crack, 1}, filename::String)
-	output = Array{Union{String, Number}, 2}(undef, length(profiles)+1, 5)
+	header = string.(fieldnames(CrackProfile))[2:end] # Don't write first field, which is a function.
+	output = Array{Union{String, Number}, 2}(undef, length(profiles)+1, length(header))
+	output[1,:] = [header...]
+
 	for i in 1:length(profiles)
 		output[i+1,:] = props(profiles[i])
 	end 
-
-	header = string.(fieldnames(CrackProfile))[2:end]
-	output[1,:] = [header...]
    
 	writedlm(filename, output, ',')
 end 
@@ -153,21 +159,54 @@ function apply_cracking(rho, vp, vpvs, profile::NoCrack)
 	return rho, vp, vpvs
 end 
 
+""""
+Apply cracking to these specific props 
+"""
+function apply_cracking(K0, mu0, rho0, fn::Function, porosity, fluid_density, fluid_K)
+	poissonsd, KdK0 = fn(porosity, poissons(K0, mu0))
+	Kd = KdK0*K0 # Dry k 
+	mud = mu_from_poissons(Kd, poissonsd) # Dry mu 
+	# Apply fluid (if K_fluid and fluid density are 0, this has no effect --> dry cracks)
+	Kw = fluid_sub(K0, fluid_K, Kd, porosity)
+	rho_w = wet_density(rho0, fluid_density, porosity)
+	# Return input props but modified 
+	return Kw, mud, rho_w
+end 
+
 function apply_cracking(rho, vp, vpvs, profile::CrackProfile)
 	vs = vp/vpvs
 	K0, mu0 = moduli_from_speeds(vp, vs, rho)
 
-	# Find dry moduli 
-	poissonsd, KdK0 = profile.cracking_fn(profile.porosity, poissons(K0, mu0))
-	Kd = KdK0*K0
-	mud = mu_from_poissons(Kd, poissonsd)
+	if profile.porosity == 0 
+		rho_w_pore = rho 
+		vpw_pore = vp
+		vsw_pore = vp / vpvs
+	else 
+	# try	
+		### Effect on seismic velocity from pores (speheres and needles)
+		Kw, mud, rho_w_pore = apply_cracking(K0, mu0, rho, 
+			profile.cracking_fn, profile.porosity, 
+			profile.fluid_density, profile.K_fluid)
+		vpw_pore, vsw_pore = speed_from_moduli(Kw, mud, rho_w_pore)
+	end 
 
-	# Apply fluid (if K_fluid and fluid density are 0, this has no effect --> dry cracks)
-	Kw = fluid_sub(K0, profile.K_fluid, Kd, profile.porosity)
-	rho_w = wet_density(rho, profile.fluid_density, profile.porosity)
+	if profile.crack_porosity == 0 
+		rho_w_crack = rho
+		vpw_crack = vp 
+		vsw_crack = vp / vpvs
+	else 
+		# # Repeat for cracking 
+		Kw, mud, rho_w_crack = apply_cracking(K0, mu0, rho, 
+			cracked_properties, profile.crack_porosity, 
+			profile.fluid_density, profile.K_fluid)
+		vpw_crack, vsw_crack = speed_from_moduli(Kw, mud, rho_w_crack)
+	end 
 
-	# Get speeds to return 
-	vpw, vsw = speed_from_moduli(Kw, mud, rho_w)
+	# velocity and density averages
+	rho_w = 2/(1/rho_w_crack + 1/rho_w_pore)
+	vpw = 2/(1/vpw_crack + 1/vpw_pore)
+	vsw = 2/(1/vsw_crack + 1/vsw_pore)
+
 	return rho_w, vpw, vpw/vsw
 end 
 
@@ -223,6 +262,7 @@ function cracked_properties(porosity, nu0)
     crack_density = gamma(porosity, CRACK_ALPHA)
     nu = nu0 * exp(-8/5 * crack_density)
     KK0 = ((1-2*nu0) * exp(-16/9 * crack_density)) / (1 - 2*nu0*exp(-8/5 * crack_density))
+    #println("cracked $nu $KK0 from original $nu0")
     return nu, KK0
 end
 
