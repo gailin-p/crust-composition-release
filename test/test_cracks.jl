@@ -87,7 +87,13 @@ end
 end
 
 
-
+@testset "Izv conversions" begin 
+	gs = [5, 10, 15, 30]
+	as = izvestiya_conversion(gs)
+	@test all(as[1:2] .> 1)
+	@test as[3] == 1
+	@test as[4] < 1
+end
 
 
 

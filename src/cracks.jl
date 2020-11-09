@@ -17,6 +17,66 @@ using DelimitedFiles
 using Distributions
 using Roots
 
+################ From Izvestiya 
+
+"""
+	izvestiya_porosity(geotherm, depth)
+Return porosity as described by Izvestiya et al 
+geotherm in degrees C / km 
+depth in km 
+"""
+function izvestiya_porosity(geotherm, depth)
+	boundaries = [mean([9,15]), mean([15,26])]
+	if geotherm <= boundaries[1]
+		return exp(-.895-.0673*depth)
+	elseif geotherm <= boundaries[2]
+		return exp(-1.21 - .0781*depth)
+	else 
+		return exp(-1.26 - 0.105*depth)
+	end
+end 
+
+"""
+	provide a porosity adjustment based on Izvestiya for all geotherms in these_geotherms. 
+For a porosity x for the center Izvestiya bin, 
+returns a factor y to convert to the geotherm bin where geotherm fits. 
+"""
+function izvestiya_conversion(these_geotherms)
+	geotherms = [9, 15, 26]
+	depths = collect(1:40)
+	means = Dict()
+	for g in geotherms
+	    p = [izvestiya_porosity(g, d) for d in depths]
+	    means[g] = mean(p)
+	end 
+
+	boundaries = [mean([9,15]), mean([15,26])]
+	adjustments = [means[9] / means[15], 1, means[26]/means[15]]
+	to_return = fill(1.0, length(these_geotherms))
+
+	smallest = these_geotherms .< boundaries[1]
+	largest = these_geotherms .> boundaries[2]
+
+	to_return[smallest] .= adjustments[1]
+	to_return[largest] .= adjustments[3]
+	return to_return
+end 
+
+function adjust_profiles(profiles, adjustment)
+	for profile in profiles
+		if typeof(profile) == NoCrack
+			continue 
+		end 
+		profile.porosity = profile.porosity * adjustment
+		profile.crack_porosity = profile.crack_porosity * adjustment
+	end
+	return profiles 
+end 
+
+############### FROM KOLA 
+
+kola_porosity = (4500*.425 + (6835-4500)*.575 + (10500-6835)*1.19)/(10500)
+
 
 ############### CRACKING BY DEPTH FUNCTION 
 
@@ -40,7 +100,7 @@ end
 abstract type Crack end 
 
 # Each crack profile has a porosity for either needles or spheres, plus a crack porosity. 
-struct CrackProfile <: Crack 
+mutable struct CrackProfile <: Crack 
 	cracking_fn::Function 
 	fluid_density::Number # 0 for dry cracks 
 	K_fluid::Number # 0 for dry cracks
