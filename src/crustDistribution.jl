@@ -16,19 +16,12 @@ using MAT
 using Statistics
 using Random
 
-# For building querries 
-dataPath = isfile("../data/crust1Layers.jld") ? "../data/crust1Layers.jld" : "data/crust1Layers.jld"
-lat_range = -89:90
-long_range = -180:179
-nlat = length(lat_range)
-nlong = length(long_range)
-
 # For resampling 
 #  If running from jupyter notebook, need relative path 
 uncertainty_dat = isfile("igncn1.mat") ? matread("igncn1.mat")["err2srel"] : matread("../igncn1.mat")["err2srel"]
 relerr_tc1 = uncertainty_dat["tc1Crust"]/2
 
-# TODO what's a reasonable lat/long error for crust 1.0? For now, use 1 deg lat/long 
+# 1 deg lat/long to account for uncertainty in placement of Crust1 boundaries. 
 err_latlong = 1.0
 
 # Exports 
@@ -40,6 +33,8 @@ export weights
 # Lats and longs where both tc1 (so age) and crust1 are defined 
 all_lats = Array{Float64, 1} # n rows, age of lat/long for this row 
 all_longs = Array{Float64, 1} # n rows, age of lat/long for this row 
+export all_longs
+export all_lats
 
 """
     latLongWeight(lat, long)
@@ -57,22 +52,21 @@ end
 Load presaved dataset or write dataset
 """
 function __init__()
-    if isfile(dataPath)
-        d = load(dataPath)
-        global depth = d["depth"]
-        global weights = d["weights"]
-        global all_lats = d["lats"]
-        global all_longs = d["longs"]
-    else
-        loadAndSaveCrust1()
-    end
+    loadCrust1()
 end
 
 """
     latsLongs() 
-Return lists of lats and longs for all 1x1 degree squares that are on continents
+Return lists of lats and longs for all 1x1 degree squares that are on continents. 
+Not all these values have both TC1 and Crust1 values, so will be futher filtered in loadCrust1.
 """
 function latsLongs() 
+    # Valid range  
+    lat_range = -89:90
+    long_range = -180:179
+    nlat = length(lat_range)
+    nlong = length(long_range)
+
     longs = Array{Float64,1}()
     lats = Array{Float64,1}()
     for lat in lat_range
@@ -85,9 +79,14 @@ function latsLongs()
     ## Check continent
     cont = map(c -> continents[c], find_geolcont(lats,longs))
     contTest = cont .!= "NA"
-
     longs = longs[contTest]
     lats = lats[contTest]
+
+    ## Check Crust1.0. upper crust below 5.25 is ocean crust not caught by geocont 
+    (vp, vs, rho) = find_crust1_seismic(lats, longs, 6) 
+    vpTest = vp .> 5.25
+    longs = longs[vpTest]
+    lats = lats[vpTest]
 
     return (lats, longs)
 end
@@ -97,7 +96,7 @@ This doesn't work on Discovery (requires ImageCore, ImageMagick, which are broke
 So save to a file, then use __init__() to read that file
 TODO: i think this is now fixed, so can dispense w this overhead 
 """
-function loadAndSaveCrust1()
+function loadCrust1()
     (lats, longs) = latsLongs()
 
     # Get depths.
@@ -118,17 +117,18 @@ function loadAndSaveCrust1()
     global all_lats = lats 
     global all_longs = longs 
 
-    global err_latlong = err_latlong
+    global depth = depth 
 
-    save(dataPath,"depth",depth, "weights", weights, "lats", lats, "longs", longs)
+    global err_latlong = err_latlong
 end
+
 
 """
     getCrustParams()
 Provide random layer depths drawn from distributions.
+Uses all geotherms (no geotherm binning)
 Return depths
     (550 isotherm, upper,middle,lower)
-TODO return dist values (gaussian, use uncertainty as std?) not exact
 """
 function getCrustParams(n::Int; uncertain::Bool=false)
     bottom = minimum(depth[:,1]) -1
@@ -178,12 +178,7 @@ so that resulting geotherm ranges in data sent to perplex will be of equal size
 function binBoundaries(n::Int)
     dmin = minimum(depth[:,1])
     dmax = maximum(depth[:,1])
-    if n == 1
-        return range(dmin, length=2, stop=dmax)
-    end 
-    n = n + 1 # need n+1 boundaries for n bins 
-    to_add = (n - 1 - (dmax - dmin)%(n-1))/2 # add this to top and bottom so that (dmax - dmin)%(n-1) = 0 and we have even-sized bins
-    return LinRange(dmin-to_add, dmax+to_add, n)
+    return range(dmin, dmax, length=n+1)
 end
 export binBoundaries 
 
