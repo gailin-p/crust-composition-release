@@ -106,7 +106,7 @@ tmax = 4000
 nbins = 4
 samplePath = "data/remote/base/bsr_ignmajors_1.csv"
 ign, h = readdlm(samplePath, ',', header=true)
-age_i = 14 #findfirst(isequal("Age"),PERPLEX_ELEMENTS)
+age_i = findfirst(isequal("Age"),PERPLEX_ELEMENTS)
 si_i = findfirst(isequal("SiO2"),PERPLEX_ELEMENTS)
 original = matread(IGN_FILE)
 age_centers, elt_means, elt_errors = bin(ign[:,age_i], ign[:,si_i],

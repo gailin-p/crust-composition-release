@@ -1,5 +1,5 @@
 """
-TODO compile over all geotherms when visualizing binned models 
+For binned models, visualizes 1/nbins samples from each bin. 
 """
 
 using ArgParse

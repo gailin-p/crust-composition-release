@@ -13,37 +13,16 @@ include("../src/bin.jl")
 
 s = ArgParseSettings()
 @add_arg_table s begin
-    "--data_prefix", "-d"
+    "--data_path", "-p"
         help = "Folder for data files"
         arg_type= String
-        default="remote/latlong_weighted"
-    "--age_model", "-a"
-        help = "Age model of results file"
-        arg_type= String
-        default="earthchem"
-    "--data_set"
-        help = "Which seismic data set was used? Shen or Crust1.0"
-        arg_type= String
-        range_tester = x -> (x in ["Crust1.0","Shen"])
-        default="Crust1.0"
-    "--result_model_type"
-    	help = "Look for result files from a different inversion model?"
-    	arg_type = String
-        range_tester = x -> (x in ["inversion","range", "vprange", "vprhorange"])
-        default = "range"
-    "--compare"
-    	help = "Look for rf/crust1 comparison results instead of range model results"
-    	arg_type = Bool 
-    	default = false 
+        default="remote/base"
     "--compare_rg"
     	help = "Compare to Rudnick and Gao"
     	arg_type = Bool
     	default = false
 end 
 parsed_args = parse_args(ARGS, s)
-if parsed_args["compare"] && parsed_args["compare_rg"]
-	throw("Only one compare arg allowed :(")
-end 
 
 #         SiO2 TiO2 Al2O3 FeO  MgO  CaO  Na2O K2O
 rg_dat = [66.6 0.64 15.4  5.04 2.48 3.59 3.27 2.80
@@ -51,12 +30,7 @@ rg_dat = [66.6 0.64 15.4  5.04 2.48 3.59 3.27 2.80
 		  53.5 0.82 16.9  8.57 7.24 9.59 2.65 0.61]
 
 
-if parsed_args["compare"] == false 
-	files = ["data/"*parsed_args["data_prefix"]*"/output/results-"*layer*"-$(parsed_args["result_model_type"])-$(parsed_args["age_model"])-$(parsed_args["data_set"]).csv" for layer in LAYER_NAMES]
-else 
-	files = vcat(["data/"*parsed_args["data_prefix"]*"/output/results-rf_vs_crust1-crust1-$(layer).csv" for layer in LAYER_NAMES],
-		["data/"*parsed_args["data_prefix"]*"/output/results-rf_vs_crust1-rf-$(layer).csv" for layer in LAYER_NAMES])
-end
+files = ["$(parsed_args["data_path"])/results-$layer.csv" for layer in LAYER_NAMES]
 
 if parsed_args["compare_rg"] == true 
 	this_dat = zeros((3,8))
