@@ -89,7 +89,7 @@ Compare to InversionModel, which uses a binned relationship between PCA and comp
 """
 mutable struct RangeModel <: AbstractModel
 	# Sorted data. Lookups are sorted arrays, perms are indices back to unsorted data. 
-	perms::Tuple{Array{Float64,1}, Array{Float64,1}, Array{Float64,1}}
+	perms::Tuple{Array{Int,1}, Array{Int,1}, Array{Int,1}}
 	lookups::Tuple{Array{Float64,1}, Array{Float64,1}, Array{Float64,1}} # rho, vp, vpvs 
 	# Size of bin for each seismic data type 
 	errors::Tuple{Float64,Float64,Float64}
@@ -131,7 +131,7 @@ function setError(models::ModelCollection, bin::Float64)
 end 
 
 """
-	Explicitly set the error ranges for a RangeModel 
+	Explicitly set a RangeModel to use mean 
 """
 function setMean(model::RangeModel, usemean::Bool)
 	model.mean = usemean
@@ -183,7 +183,7 @@ function RangeModel(ign::Array{Float64, 2}, seismic::Array{Float64, 2})
 	vpvs_lookup = seismic[:,4][vpvs_perm]
 
 	# Default bin sizes 
-	errors = (.05, .05, .05) .* (nanmean(rho_lookup), nanmean(vp_lookup), nanmean(vpvs_lookup))
+	errors = (.005, .005, .005) .* (nanmean(rho_lookup), nanmean(vp_lookup), nanmean(vpvs_lookup))
 
 	return RangeModel((rho_perm, vp_perm, vpvs_perm), (rho_lookup, vp_lookup, vpvs_lookup), errors, seismic, ign, false, (true, true, true))
 end 
@@ -234,18 +234,19 @@ function estimateComposition(model::RangeModel,
 
 		# find indices agreed upon by all types of seismic data 
 		# TODO make this faster if we end up using big bins, for now assume n^2 is fine 
-		agreed = Array{Int, 1}(undef, 0)
+		agreed = Array{Int, 1}(undef, 0) ## indices of comps within error % of seismic sample 
+		distances = Array{Float64, 1}(undef, 0) ## L1 norm distance of each agreed comp to seismic sample 
 		for i in indices[1]
 			if (i in indices[2]) & (i in indices[3])
-				push!(agreed, Int(i))
+				push!(agreed, i)
+				distance = sum((model.seismic[i,2:4] .- dat) ./ dat) # L1 norm of percent difference 
+				
+				push!(distances, distance)
 			end 
 		end 
 		#println("agree on $agreed")
 		# How many were matched? 
 		mean!(numMatched, length(agreed))
-
-		# look up compositions of agreed upon indices 
-		compositions = model.comp[agreed, :] 
 		
 		if length(agreed)==0
 			results[test_i,:] .= NaN
@@ -253,11 +254,16 @@ function estimateComposition(model::RangeModel,
 		else
 			# Select one of matching samples 
 			if !model.mean
-				idx = rand(1:length(agreed))
-				results[test_i,:] = compositions[idx, :]
+				##### Random sample within error window 
+				# idx = rand(1:length(agreed))
+
+				##### Best sample within error window 
+				idx = agreed[argmin(distances)]
+				results[test_i,:] = model.comp[idx, :]
 				result_stds[test_i,:] .= -1
 			else 
 				# Alternative: Mean sample 
+				compositions = model.comp[agreed, :] 
 				results[test_i,:] = mean(compositions, dims=1) 
 				result_stds[test_i,:] = std(compositions, dims=1)
 			end 
@@ -281,7 +287,10 @@ function estimateComposition(model::RangeModel,
 	# 	$(sum(.! isnan.(results))) not NaN results out of $(length(rho)) inputs")
 	if numMatched.m < 10
 		println("Warning: matched on average less than 10 perplex samples per test sample.")
+	else 
+		println("Matched $(numMatched.m) samples per test sample.")
 	end 
+
 
 	return results, result_stds #, results_indices
 
@@ -469,7 +478,10 @@ function makeModels(data_location::String; modelType::DataType=RangeModel, crack
 	if nBins == 0 
 		throw(AssertionError("No perplex results found for data directory $data_location"))
 	end 
-	bins = crustDistribution.binBoundaries(nBins)
+	bins = crustDistribution.binBoundaries(nBins) # bin by depth to 550 
+	bin_centers = [(bins[b]+bins[b+1])/2 for b in 1:length(bins)-1]
+	bin_geotherms = 550 ./ bin_centers
+	bin_crack_adjustments = izvestiya_conversion(bin_geotherms)
 
 	# Models for each layer. upper[i] is model for i-th geotherm bin. 
 	upper = Array{AbstractModel, 1}(undef, nBins)
@@ -492,6 +504,7 @@ function makeModels(data_location::String; modelType::DataType=RangeModel, crack
 		if crackFile != ""
 			if isfile(crackFile)
 				profiles = get_profiles(crackFile)
+				profiles = adjust_profiles(profiles, bin_crack_adjustments[bin_num])
 			else 
 				throw(AssertionError("Crack profiles do not exist."))
 			end 

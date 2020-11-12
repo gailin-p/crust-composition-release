@@ -48,10 +48,6 @@ s = ArgParseSettings()
         arg_type = String
         range_tester = x -> (x in ["Shen","Crust1.0"])
         default = "Crust1.0"
-    "--bin_size", "-b"  
-    	help = "% of each sizemic parameter in bin for range model (in decimal form)"
-    	arg_type = Float64
-    	default = .05
     "--mean"  
     	help = "for range model, use the mean of all matching compsoitions? if not, choose random."
     	arg_type = Bool
@@ -105,7 +101,6 @@ function run(parsed_args, outputPath)
 	### TODO: combine all these models, this is absurd -- most code is shared.
 	if parsed_args["model"] == "range"
 		models = makeModels(parsed_args["data_prefix"], modelType=RangeModel, crackFile=crackFile) # see inversionModel.jl. returns a ModelCollection 
-		setError(models, parsed_args["bin_size"])
 		if parsed_args["mean"]
 			setMean(models, parsed_args["mean"])
 		end 
