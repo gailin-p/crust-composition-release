@@ -161,7 +161,7 @@ Optionally add a systematic bias to Crust1.0 seismic data after resampling.
 """
 function getAllSeismic(layer::Integer; 
   ageModel::AgeModel=Tc1Age(), n::Integer=50000, resample::Bool=true, systematic::Bool=false, 
-  latlong::Bool=false, dataSrc::String="Crust1.0")
+  latlong::Bool=false, dataSrc::String="Crust1.0", dataUncertainty::Float64=1.0)
     if !(layer in [6,7,8])
         throw(ArgumentError("Layer must be 6, 7, or 8 (crysteline Crust1 layers)"))
     end
@@ -239,9 +239,9 @@ function getAllSeismic(layer::Integer;
 
     ages, age_uncertainty = sampleAge(lats, longs, ageModel)
 
-    err_rho = std(rho)
-    err_vp = std(vp)
-    err_vs = std(vs)
+    err_rho = std(rho) * dataUncertainty
+    err_vp = std(vp) * dataUncertainty
+    err_vs = std(vs) * dataUncertainty
 
     if resample 
         k = crustDistribution.latLongWeight.(lats)

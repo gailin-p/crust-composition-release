@@ -48,20 +48,25 @@ s = ArgParseSettings()
         arg_type = String
         range_tester = x -> (x in ["Shen","Crust1.0"])
         default = "Crust1.0"
+    "--data_source_uncertainty"
+    	help = "Uncertainty as a fraction of std of this data set"
+        arg_type = Float64
+        range_tester = x -> (x >= 0)
+        default = 1.0
     "--mean"  
-    	help = "for range model, use the mean of all matching compsoitions? if not, choose random."
+    	help = "for range model, use the mean of all matching compsoitions? if not, choose best."
     	arg_type = Bool
     	default = false
     "--crack"
     	help = "Mean of upper crust total porosity."
     	arg_type = Float64  
-    	default = 0.0
+    	default = 0.007
     	range_tester = x -> ((x >= 0) && (x < .5))
     "--fraction_crack"
     	help = "% of the pore space that is cracks (very low aspect ratio). 
     			Be careful with this, cracks have much larger effect on seismic props."
     	arg_type = Float64  
-    	default = 0.0
+    	default = 0.05
     	range_tester = x -> ((x >= 0) && (x <= 1))
     "--cracked_samples"
     	help = "How many samples do we apply cracking to?"
@@ -126,11 +131,14 @@ function run(parsed_args, outputPath)
 	end
 
 	upperDat, (upperCrustbase, upperAge, upperLat, upperLong) = getAllSeismic(
-		6, n=parsed_args["num_invert"], ageModel=age_model, latlong=true, dataSrc=parsed_args["data_source"]) # returns rho, vp, vpvs, tc1, age
+		6, n=parsed_args["num_invert"], ageModel=age_model, latlong=true, 
+		dataSrc=parsed_args["data_source"], dataUncertainty=parsed_args["data_source_uncertainty"]) # returns rho, vp, vpvs, tc1, age
 	middleDat, (middleCrustbase, middleAge, middleLat, middleLong) = getAllSeismic(
-		7, n=parsed_args["num_invert"], ageModel=age_model, latlong=true, dataSrc=parsed_args["data_source"])
+		7, n=parsed_args["num_invert"], ageModel=age_model, latlong=true, 
+		dataSrc=parsed_args["data_source"], dataUncertainty=parsed_args["data_source_uncertainty"])
 	lowerDat, (lowerCrustbase, lowerAge, lowerLat, lowerLong) = getAllSeismic(
-		8, n=parsed_args["num_invert"], ageModel=age_model, latlong=true, dataSrc=parsed_args["data_source"])
+		8, n=parsed_args["num_invert"], ageModel=age_model, latlong=true, 
+		dataSrc=parsed_args["data_source"], dataUncertainty=parsed_args["data_source_uncertainty"])
 	sampleDat = [upperDat, middleDat, lowerDat]
 	sampleAges = [upperAge, middleAge, lowerAge]
 	sampleBases = [upperCrustbase, middleCrustbase, lowerCrustbase]
