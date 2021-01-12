@@ -53,10 +53,24 @@ end
 
 """
 For values at each location in latitide/longitude, find average value per lat/long grid square.
-Return lat, long, ave value for each square. 
+Return lat, long, ave value for each square, with val=NaN for squares with no values. 
+size combines that size^2 lat/long squares into each returned square. 
 """
-function areaAverage(latitude::Array{Float64,1}, longitude::Array{Float64,1}, vals::Array{Float64,1})
+function areaAverage(latitude::Array{Float64,1}, longitude::Array{Float64,1}, vals::Array{Float64,1}; size::Int=1)
+	good = .!(isnan.(latitude) .| isnan.(longitude) .| isnan.(vals))
+
 	m = Dict{Tuple, Array}() # map from lat/long to list of values
+	# Want full globe for visualization, even where no values 
+	# for lat in range(floor(minimum(latitude[good])/size), stop=floor(maximum(latitude[good])/size))
+	# 	for long in range(floor(minimum(longitude[good])/size), stop=floor(maximum(longitude[good])/size))
+	# 		m[(floor(lat), floor(long))] = [] 
+	# 	end
+	# end
+
+	# now put in those values 
+	latitude = latitude[good] ./ size 
+	longitude = longitude[good] ./ size
+	vals = vals[good]
 	for i in 1:length(latitude)
 		a = get!(m, (floor(latitude[i]), floor(longitude[i])), [])
 		append!(a, vals[i])
@@ -69,9 +83,10 @@ function areaAverage(latitude::Array{Float64,1}, longitude::Array{Float64,1}, va
 	longs = [k[2] for k in keys(m)]
 	val = [mean(v) for v in values(m)]
 
-	good = .!(isnan.(lats) .| isnan.(longs) .| isnan.(val))
+	#good = .!(isnan.(lats) .| isnan.(longs) .| isnan.(val))
 
-	return lats[good], longs[good], val[good]
+	#return lats[good].*size, longs[good].*size, val[good]
+	return lats.*size, longs.*size, val
 end 
 
 """
@@ -80,10 +95,13 @@ Assumes lat/long pairs are unique (run after areaAverage)
 Returns grid with NaN at any missing values 
 """
 function globe(lats, longs, vals)
-    globe = fill(NaN, (Int(1+maximum(lats)-minimum(lats)), Int(1+maximum(longs)-minimum(longs))))
+	slats = sort(unique(lats))
+	slongs = sort(unique(longs))
+    globe = fill(NaN, (length(slats), length(slongs)))
     for i in 1:length(lats)
-        y = Int(lats[i]+1-(minimum(lats)))
-        x = Int(longs[i]+1-(minimum(longs)))
+        y = searchsortedfirst(slats, lats[i])
+        x = searchsortedfirst(slongs, longs[i])
+        #println("$x, $y")
         globe[y,x] = vals[i]
     end 
     return globe 

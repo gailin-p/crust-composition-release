@@ -37,7 +37,7 @@ s = ArgParseSettings()
     "--num_invert", "-n" 
     	help = "How many resampled Crust1.0 samples to invert?"
     	arg_type = Int
-    	default = 50000
+    	default = nOriginal()
     "--age_model"
     	help = "How to apply ages to samples to invert. Allowed: tc1, earthchem"
         arg_type = String
@@ -111,10 +111,8 @@ function run(parsed_args, outputPath)
 		end 
 	elseif parsed_args["model"] == "vprange"
 		models = makeModels(parsed_args["data_prefix"], modelType=VpModel, crackFile=crackFile)  
-		setError(models, parsed_args["bin_size"])
 	elseif parsed_args["model"] == "vprhorange"
 		models = makeModels(parsed_args["data_prefix"], modelType=VpRhoModel, crackFile=crackFile)  
-		setError(models, parsed_args["bin_size"])
 		if parsed_args["mean"]
 			setMean(models, parsed_args["mean"])
 		end 

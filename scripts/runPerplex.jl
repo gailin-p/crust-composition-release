@@ -56,7 +56,7 @@ sample_size = length(PERPLEX_ELEMENTS) # number of columns in ign per sample
 exclude = ""
 dataset = parsed_args["perplex_dataset"]
 dpdz = 2900. * 9.8 / 1E5 * 1E3
-# For now, use fluid and throw away results with NaN or 0 seismic properties. 
+# TODO test diff between using / not using fluid 
 solutions = "O(HP)\nOpx(HP)\nOmph(GHP)\nGt(HP)\noAmph(DP)\nGlTrTsPg\nT\nB\nAnth\nChl(HP)"*
 		"\nBio(TCC)\nMica(CF)\nCtd(HP)\nIlHm(A)\nSp(HP)\nSapp(HP)\nSt(HP)\nfeldspar"*
 		"\nDo(HP)\n"

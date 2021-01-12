@@ -183,7 +183,7 @@ function RangeModel(ign::Array{Float64, 2}, seismic::Array{Float64, 2})
 	vpvs_lookup = seismic[:,4][vpvs_perm]
 
 	# Default bin sizes 
-	errors = (.005, .005, .005) .* (nanmean(rho_lookup), nanmean(vp_lookup), nanmean(vpvs_lookup))
+	errors = (.01, .01, .01) .* (nanmean(rho_lookup), nanmean(vp_lookup), nanmean(vpvs_lookup))
 
 	return RangeModel((rho_perm, vp_perm, vpvs_perm), (rho_lookup, vp_lookup, vpvs_lookup), errors, seismic, ign, false, (true, true, true))
 end 
@@ -496,6 +496,10 @@ function makeModels(data_location::String; modelType::DataType=RangeModel, crack
 		# Read perplex results. Shape (4, 3, n), property, layer, index. 
 		perplexFile = "data/"*data_location*"/perplex_out_$(bin_num).h5"
 		perplexresults = h5read(perplexFile, "results")
+
+		perplexresults[2,:,:] += (randn(size(perplexresults, 2), size(perplexresults,3)) .* 81.9)
+		perplexresults[3,:,:] += (randn(size(perplexresults, 2), size(perplexresults,3)) .* .1941)
+		perplexresults[4,:,:] += (randn(size(perplexresults, 2), size(perplexresults,3)) .* .01933)
 
 		if size(ign,1) != size(perplexresults,3)
 			throw(AssertionError("Size of ign does not match size of perplex results from $(fileName)"))
