@@ -124,6 +124,19 @@ function props(profile::NoCrack)
 	return [NaN, NaN, NaN, NaN, "none", "none"]
 end 
 
+"""
+	CrackProfile(z)
+Return cracking profile for depth z 
+Partition 4% of porosity into cracks, rest into pores 
+Dry cracks (for modeling experimental results )
+Assume porosity = permeability x 10^3 
+Use needles 
+"""
+function CrackProfile(z)
+	porosity = kFromDepth(z)*10^4
+	return CrackProfile(needle_properties, 0, 0, .96*porosity, .04*porosity, "d", "needle")
+end 
+
 # Load data 
 # from Rivers and Carmichael 1987, "Ultrasonic Studies of Silicate Melts"
 magma_dat, header = isfile("data/magma_moduli.csv") ? readdlm("data/magma_moduli.csv", ',', header=true) : readdlm("../data/magma_moduli.csv", ',', header=true)

@@ -36,6 +36,10 @@ all_longs = Array{Float64, 1} # n rows, age of lat/long for this row
 export all_longs
 export all_lats
 
+# Ages of crust crust according to TC1 
+ages = Array{Float64, 1} # n rows 
+export ages 
+
 """
     latLongWeight(lat, long)
 return weighting for the area of a 1 degree square at this latitude.
@@ -117,6 +121,9 @@ function loadCrust1()
     global all_lats = lats 
     global all_longs = longs 
 
+    # Get ages. 
+    global ages = find_tc1_age(lats, longs)[1]
+
     global depth = depth 
 
     global err_latlong = err_latlong
@@ -136,9 +143,42 @@ function getCrustParams(n::Int; uncertain::Bool=false)
     return getCrustParams(bottom, top, n, uncertain=uncertain)
 end
 
+"""
+    getFormationConditions(n)
+Return n depth to 550, depth pairs representing possible formation conditions.  
+Units Bar, C 
+Assume formation at base of crust. 
+"""
+function getFormationParams(n::Int)
+    test = ages .== 25 # youngest crust 
+    samples = Array{Float64, 2}(undef, (n,2))
+    for i in 1:n
+        rand_i = sample(Weights(weights[test]))
+        this_sample = depth[test,:][rand_i,:] # depth to 550, base of upper, middle, lower 
+        samples[i,1] = this_sample[1]
+        samples[i,2] = this_sample[4]
+        # # pressue is dpdz * base of lower crust 
+        # samples[i,1] = dpdz * this_sample[4]
+        # # temperature: assume 0 at surface to 550 at isotherm 
+        # dtdz = (550 / this_sample[1]) # deg c / km 
+        # samples[i,2] = dtdz * this_sample[4]
+    end
+    return samples 
+end
 
 """
-    getCrustParams(bin, max, n)
+    getFormationConditions()
+Return n depth to 550, depth pairs representing mean formation conditions 
+"""
+function getFormationParams()
+    test = ages .== 25 # youngest crust 
+    depths = depth[test,:]
+    w = Weights(weights[test])
+    return (mean(depths[:,1], w), mean(depths[:,4], w))
+end
+
+"""
+    getCrustParams(min, max, n)
 Get random layer depths and geotherms for n samples when geotherms are binned. 
 Use bin min and bin max to limit where geotherms are pulled from. 
 Bin prior to adding uncertainty, because that uncertainty in geotherm 

@@ -15,6 +15,9 @@ using StatGeochem
 using HDF5
 include("../src/config.jl")
 include("../src/utilities.jl")
+include("../src/crustDistribution.jl")
+include("../src/seismic.jl")
+include("../src/parsePerplex.jl")
 
 s = ArgParseSettings()
 @add_arg_table s begin
@@ -70,8 +73,13 @@ p_label = "P(bar)"
 
 function worker() 
 	println("worker rank $(rank)")
-	results = fill(-1.0,(2,4,3,n)) # result|error, property (index, rho, vp, vpvs), layer, sample
+	# For seismic 
+	st = SeismicTransform()
+
+	# For MPI 
+	results = fill(-1.0,(2,4,3,n)) # result/error, property (index, rho, vp, vpvs), layer, sample
 	requested = fill(-1.0, (n, sample_size))
+	
 	while true 
 		# Blocking send of data 
 		MPI.Send(results, 0, rank, comm)
@@ -85,6 +93,9 @@ function worker()
 			break 
 		end
 
+		# get formation depth to 550, depth 
+		formation = crustDistribution.getFormationParams(n)
+
 		# Run perplex  
 		for i in 1:n 
 			index = requested[i,1]
@@ -97,52 +108,81 @@ function worker()
 				break
 			end
 
-			# Sample-specific perplex options 
-			geotherm = 550.0/tc1/dpdz
-        	P_range = [1, ceil(Int,layers[3]*dpdz)] # run to base of crust. 
+			formation_dtdz = 550/formation[i,1]
+			formation_depth = formation[i,2]
+			geotherm = formation_dtdz/dpdz # dt/dp 
+        	#P_range = [1, ceil(Int,layers[3]*dpdz)] # run to base of crust. 
+        	P_range = [formation_depth*(9/10)*dpdz, formation_depth*(11/10)*dpdz] # we only need a small range around formation t, p
 
         	# Run perplex
         	perplex_configure_geotherm(perplex, scratch, comp, PERPLEX_COMPOSITION_ELTS,
                 P_range, 273.15, geotherm, dataset=dataset, solution_phases=solutions,
                 excludes=fluid_endmembers, index=rank, npoints=npoints)
-            seismic = perplex_query_seismic(perplex, scratch, index=rank)
+            point = perplex_query_point(perplex, scratch, formation_depth*dpdz, index=rank)
 
-            # discard below first NaN or 0 value in any property 
-            # find first NaN or 0 value across props
-            bad = Inf 
-			for prop_i in 1:length(prop_labels) 
-            	prop = prop_labels[prop_i]
-   				this_bad = findfirst(x->(isnan(x) | (x < 1e-6)), seismic[prop])
-   				if !isnothing(this_bad)
-   					bad = Int(min(this_bad, bad))
-   				end
-   			end
-   			# Remove all values after first bad value 
-   			if bad <= length(seismic[p_label]) # some values to be handled 
-   				for prop in prop_labels # find first NaN or 0 value across props
-					seismic[prop][bad:end] .= NaN 
-				end
+            try 
+				properties = get_system_props(point)
+				endmembers = parse_perplex_point(point)
+
+				dtdz = 550.0/tc1 # sampling geotherm 
+				pushfirst!(layers, 0.0) # first boundary is surface 
+				for l in 1:3
+					depth = (layers[l] + layers[l+1])/2 # middle of layer 
+					P = dpdz*depth + 280 # add surface pressure (bar)
+					T = dtdz*depth + 273.15 # add surface temp (K)
+					rho, vp, vs = get_seismic(T, P, properties, endmembers, st)
+					results[1,2:4,l,i] = [rho, vp, vp/vs] # rho, vp, vpvs 
+				end 
+			catch e
+				#if (isa(e, ParsePerplexError) | isa(e, SeismicError))
+					println("\r\n\r\nCannot process sample due to \r\n $e")
+				#else 
+				#	throw(e)
+				#end 
 			end
 
-            # Find per-layer mean for each property 
-            p_layers = [l*dpdz for l in layers] # convert depths to pressures 
-            pressure = seismic[p_label]
-			upper = (pressure .> exhumation*dpdz) .& (pressure .<= p_layers[1])
-            middle = (pressure .> p_layers[1]) .& (pressure .<= p_layers[2])
-            lower = (pressure .> p_layers[2]) .& (pressure .<= p_layers[3])
-            for prop_i in 1:length(prop_labels)
-            	prop = prop_labels[prop_i]
-            	results[1,prop_i+1,1,i] = 1/(nanmean(1 ./ seismic[prop][upper]))
-            	results[1,prop_i+1,2,i] = 1/(nanmean(1 ./ seismic[prop][middle]))
-            	results[1,prop_i+1,3,i] = 1/(nanmean(1 ./ seismic[prop][lower]))
-            	# Std in those properties 
-            	results[2,prop_i+1,1,i] = nanstd(seismic[prop][upper])
-            	results[2,prop_i+1,2,i] = nanstd(seismic[prop][middle])
-            	results[2,prop_i+1,3,i] = nanstd(seismic[prop][lower])
-            end
-
-            # Set index in results 
+        	# Set index in results 
             results[:,1,:,i] .= index
+
+
+   #          seismic = perplex_query_seismic(perplex, scratch, index=rank)
+
+   #          # discard below first NaN or 0 value in any property 
+   #          # find first NaN or 0 value across props
+   #          bad = Inf 
+			# for prop_i in 1:length(prop_labels) 
+   #          	prop = prop_labels[prop_i]
+   # 				this_bad = findfirst(x->(isnan(x) | (x < 1e-6)), seismic[prop])
+   # 				if !isnothing(this_bad)
+   # 					bad = Int(min(this_bad, bad))
+   # 				end
+   # 			end
+   # 			# Remove all values after first bad value 
+   # 			if bad <= length(seismic[p_label]) # some values to be handled 
+   # 				for prop in prop_labels # find first NaN or 0 value across props
+			# 		seismic[prop][bad:end] .= NaN 
+			# 	end
+			# end
+
+   #          # Find per-layer mean for each property 
+   #          p_layers = [l*dpdz for l in layers] # convert depths to pressures 
+   #          pressure = seismic[p_label]
+			# upper = (pressure .> exhumation*dpdz) .& (pressure .<= p_layers[1])
+   #          middle = (pressure .> p_layers[1]) .& (pressure .<= p_layers[2])
+   #          lower = (pressure .> p_layers[2]) .& (pressure .<= p_layers[3])
+   #          for prop_i in 1:length(prop_labels)
+   #          	prop = prop_labels[prop_i]
+   #          	results[1,prop_i+1,1,i] = 1/(nanmean(1 ./ seismic[prop][upper]))
+   #          	results[1,prop_i+1,2,i] = 1/(nanmean(1 ./ seismic[prop][middle]))
+   #          	results[1,prop_i+1,3,i] = 1/(nanmean(1 ./ seismic[prop][lower]))
+   #          	# Std in those properties 
+   #          	results[2,prop_i+1,1,i] = nanstd(seismic[prop][upper])
+   #          	results[2,prop_i+1,2,i] = nanstd(seismic[prop][middle])
+   #          	results[2,prop_i+1,3,i] = nanstd(seismic[prop][lower])
+   #          end
+
+   #          # Set index in results 
+   #          results[:,1,:,i] .= index
 
         end
 	end
