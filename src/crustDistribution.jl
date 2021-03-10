@@ -56,7 +56,14 @@ end
 Load presaved dataset or write dataset
 """
 function __init__()
-    loadCrust1()
+    # Allow different relative paths so works in jupyter notebook or script. 
+    file = isdir("../data") ? "../data/crustDistribution.jld" : "data/crustDistribution.jld"
+    if isfile(file)
+        loadSavedCrust(file)
+    else 
+        loadCrust1()
+        saveCrust(file) 
+    end
 end
 
 """
@@ -95,6 +102,22 @@ function latsLongs()
     return (lats, longs)
 end
 
+function saveCrust(path) 
+    save(path, "weights", weights, "all_lats", all_lats, "all_longs", all_longs, 
+        "ages", ages, "depth", depth, "err_latlong", err_latlong)
+end 
+
+function loadSavedCrust(path) 
+    println("Loading crust information from file $path")
+    d = load(path)
+    global weights = d["weights"]
+    global all_lats = d["all_lats"]
+    global all_longs = d["all_longs"]
+    global ages = d["ages"]
+    global depth = d["depth"]
+    global err_latlong = d["err_latlong"]
+end 
+
 """Get thickness and depths
 This doesn't work on Discovery (requires ImageCore, ImageMagick, which are broken)
 So save to a file, then use __init__() to read that file
@@ -104,7 +127,7 @@ function loadCrust1()
     (lats, longs) = latsLongs()
 
     # Get depths.
-    global depth = find_tc1_crust(lats, longs) # Geotherm
+    depth = find_tc1_crust(lats, longs) # Geotherm
     for layer in [6,7,8] # upper, middle, lower
         d = [-1*n for n in find_crust1_base(lats, longs, layer)]
         depth = hcat(depth,d)
@@ -169,6 +192,11 @@ end
 """
     getFormationConditions()
 Return n depth to 550, depth pairs representing mean formation conditions 
+(base of crust at newly cratonized crust)
+
+NOTE: After discussion with brenhin, this is not a good way to estimate formation conditions. 
+Plutons do not form at base of crust; instead they generally form 0-10 km below where they are now. 
+They form at ~600 C but experience some retrograding 
 """
 function getFormationParams()
     test = ages .== 25 # youngest crust 
@@ -176,6 +204,18 @@ function getFormationParams()
     w = Weights(weights[test])
     return (mean(depths[:,1], w), mean(depths[:,4], w))
 end
+
+# Return depth and dtdz of formation 
+function getFormationParams(depth::Number, dtdz::Number, uncertain::Bool=true)
+    if uncertain
+        fdepth = depth + rand()*10 # formation depth up to 10 km deeper than present depth 
+        ftemp = fdepth*dtdz + rand()*(600 - fdepth*dtdz) # formation temp between current geotherm and 600
+    else 
+        fdepth = depth+10 
+        ftemp = 400
+    end 
+    return fdepth, ftemp/fdepth 
+end 
 
 """
     getCrustParams(min, max, n)

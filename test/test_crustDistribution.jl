@@ -1,8 +1,14 @@
 using Test 
 
+# Test that we can load data 
+rm("data/crustDistribution.jld")
+
 include("../src/crustDistribution.jl")
 
 @testset "crustDistribution" begin 
+
+# After removing file, should have been re-saved. 
+@test isfile("data/crustDistribution.jld")
 
 ## crustDistribution should export depths, latitudes, longitudes 
 @testset "Test initialized exports" begin 
@@ -48,6 +54,15 @@ max_geotherm = maximum(crustDistribution.depth[:,1])
 		@test (bins[2] - bins[1]) == (bins[3] - bins[2])
 	end
 end 
+
+
+
+
+
+
+
+
+
 
 
 end 
