@@ -40,6 +40,10 @@ s = ArgParseSettings()
         help = "Path to EarthChem mat file"
         arg_type = String
         default = "igncn1.mat"
+    "--dabie"
+        help = "If provided, use Dabie data file as source composition when resampling"
+        arg_type = String
+        default = "" 
     "--num_samples", "-n"
         help = "How many samples to produce"
         arg_type = Int
@@ -66,79 +70,105 @@ writeOptions("data/"*dir*"/resampleEarthChem_options.csv", parsed_args)
 # Read in mat file
 ign = matread(parsed_args["data"])
 
-# Calculate H2O_Total if not present or all NaN
-if (! contains(keys(ign), "H2O_Total")) || (sum(isnan.(ign["H2O_Total"])) == length(ign["H2O_Total"]))
-    println("Calculating H2O_Total from H2O, H2O_Plus, H2O_Minus, and Loi")
-    ign["H2O_Total"] = fill(NaN, (length(ign["H2O"]),1))
-    println(size(ign["H2O"]))
-    println(size(ign["H2O_Total"]))
 
-    # If H2O exists, use that 
-    h2Ogood = .~(isnan.(ign["H2O"]))
-    println("Using $(sum(h2Ogood)) H2O values")
-    ign["H2O_Total"][h2Ogood] .= ign["H2O"][h2Ogood]
+if parsed_args["dabie"] == ""
+    # Calculate H2O_Total if not present or all NaN
+    if (! ( "H2O_Total" in keys(ign))) || (sum(isnan.(ign["H2O_Total"])) == length(ign["H2O_Total"]))
+        println("Calculating H2O_Total from H2O, H2O_Plus, H2O_Minus, and Loi")
+        ign["H2O_Total"] = fill(NaN, (length(ign["H2O"]),1))
+        println(size(ign["H2O"]))
+        println(size(ign["H2O_Total"]))
 
-    # Otherwise, if H2O_Plus and H2O_Minus, use sum of those 
-    plusminus = (.~h2Ogood) .& (.~(isnan.(ign["H2O_Plus"]))) .& (.~(isnan.(ign["H2O_Minus"])))
-    println("Using $(sum(plusminus)) H2O_Plus and H2O_Minus values")
-    ign["H2O_Total"][plusminus] .= ign["H2O_Minus"][plusminus] .+ ign["H2O_Plus"][plusminus]
+        # If H2O exists, use that 
+        h2Ogood = .~(isnan.(ign["H2O"]))
+        println("Using $(sum(h2Ogood)) H2O values")
+        ign["H2O_Total"][h2Ogood] .= ign["H2O"][h2Ogood]
 
-    # Otherwise, partition Loi into CO2 and H2O based on ratio in rest of data set 
-    ratio = nanmean(ign["H2O"][h2Ogood] ./ (ign["CO2"][h2Ogood] + ign["H2O"][h2Ogood])) # h2O out of total volatiles
-    loi = (.~plusminus) .& (.~h2Ogood) .& (.~(isnan.(ign["Loi"])))
-    println("Using $(sum(loi)) Loi values, partitioning $(ratio) of volatiles into H2O")
-    ign["H2O_Total"][loi] = ign["Loi"][loi] .* ratio 
-    ign["CO2"][loi] .= ign["Loi"][loi] .* (1-ratio)
+        # Otherwise, if H2O_Plus and H2O_Minus, use sum of those 
+        plusminus = (.~h2Ogood) .& (.~(isnan.(ign["H2O_Plus"]))) .& (.~(isnan.(ign["H2O_Minus"])))
+        println("Using $(sum(plusminus)) H2O_Plus and H2O_Minus values")
+        ign["H2O_Total"][plusminus] .= ign["H2O_Minus"][plusminus] .+ ign["H2O_Plus"][plusminus]
 
-    println("$(sum(.~(isnan.(ign["H2O_Total"])))) not-nan H2O_Total values from $(sum(h2Ogood) + sum(plusminus) + sum(loi)) other data vals")
-end 
+        # Otherwise, partition Loi into CO2 and H2O based on ratio in rest of data set 
+        ratio = nanmean(ign["H2O"][h2Ogood] ./ (ign["CO2"][h2Ogood] + ign["H2O"][h2Ogood])) # h2O out of total volatiles
+        loi = (.~plusminus) .& (.~h2Ogood) .& (.~(isnan.(ign["Loi"])))
+        println("Using $(sum(loi)) Loi values, partitioning $(ratio) of volatiles into H2O")
+        ign["H2O_Total"][loi] = ign["Loi"][loi] .* ratio 
+        ign["CO2"][loi] .= ign["Loi"][loi] .* (1-ratio)
 
-# List of elements we want to resample export (primarily element oxides)
-# Lat, long and age are unused, but export for visualization or reference. 
+        println("$(sum(.~(isnan.(ign["H2O_Total"])))) not-nan H2O_Total values from $(sum(h2Ogood) + sum(plusminus) + sum(loi)) other data vals")
+    end 
 
-# Set uncertainties
-for e in RESAMPLED_ELEMENTS
-    ign["err"][e] = ign[e] .* (ign["err2srel"][e] / 2) # default
-    ign["err"][e][isnan.(ign[e])] .= nanstd(ign[e]) # missing data gets std, which is a much larger uncertainty
+    # List of elements we want to resample export (primarily element oxides)
+    # Lat, long and age are unused, but export for visualization or reference. 
+
+    # Set uncertainties
+    for e in RESAMPLED_ELEMENTS
+        ign["err"][e] = ign[e] .* (ign["err2srel"][e] / 2) # default
+        ign["err"][e][isnan.(ign[e])] .= nanstd(ign[e]) # missing data gets std, which is a much larger uncertainty
+    end
+
+    # Special cases: Latitude & Longitude
+    ign["err"]["Latitude"] = ign["Loc_Prec"]
+    ign["err"]["Longitude"] = ign["Loc_Prec"]
+
+    # Special cases: Age
+    ign["err"]["Age"] = (ign["Age_Max"]-ign["Age_Min"])/2;
+    # Find points with < 50 Ma absolute uncertainty
+    t = (ign["err"]["Age"] .< 50) .| isnan.(ign["err"]["Age"])
+    # Set 50 Ma minimum age uncertainty (1-sigma)
+    ign["err"]["Age"][t] .= 50
+
+    # Clean up data before resampling
+    # Start with all Fe as FeO TODO before or after resample? TODO what error to use for binned FeO?
+    ign["FeO"] = feoconversion.(ign["FeO"], ign["Fe2O3"], ign["FeOT"], ign["Fe2O3T"])
+
+    # Reject samples with suspicious anhydrous normalizations
+    anhydrousnorm = fill(false, length(ign[RESAMPLED_ELEMENTS[1]]))
+    for i in 1:length(ign[RESAMPLED_ELEMENTS[1]]) # for every sample 
+        elts = [ign[elt][i] for elt in COMPOSITION_ELEMENTS[1:8]] # sum of percents for every sample 
+        total = sum(elts)
+        anhydrousnorm[i] = (total < 101) & (total > 90) # is this sample reasonable? (all NaNs will return false)
+    end 
+    println("Throwing away $(length(ign[RESAMPLED_ELEMENTS[1]]) - sum(anhydrousnorm)) samples because of suspicious anhydrous normalizations or all NaN values")
+
+    for elt in RESAMPLED_ELEMENTS 
+        ign[elt] = ign[elt][anhydrousnorm]
+        ign["err"][elt] = ign["err"][elt][anhydrousnorm]
+    end 
+else
+    comp_compat, _ = convert_dabie(parsed_args["dabie"])
+    n = size(comp_compat)[1]
+    ign_new = Dict{String,Any}()
+    for re in RESAMPLED_ELEMENTS
+        ign_new[re] = fill(NaN, n)
+    end
+    for (i, ce) in enumerate(COMPOSITION_ELEMENTS)
+        ign_new[ce] = comp_compat[:,i]
+    end
+
+    ign_new["elements"] = RESAMPLED_ELEMENTS
+
+    # Set uncertainties
+    ign_new["err"] = Dict()
+    for e in RESAMPLED_ELEMENTS
+        ign_new["err"][e] = ign_new[e] .* (ign["err2srel"][e] / 2) # default
+        ign_new["err"][e][isnan.(ign_new[e])] .= nanstd(ign_new[e]) # missing data gets std, which is a much larger uncertainty
+    end
+
+    # make this the usual ign 
+    ign = ign_new 
+
+    data = unelementify(ign, ign["elements"], floatout=true)
+    println(data)
 end
-
-# Special cases: Latitude & Longitude
-ign["err"]["Latitude"] = ign["Loc_Prec"]
-ign["err"]["Longitude"] = ign["Loc_Prec"]
-
-# Special cases: Age
-ign["err"]["Age"] = (ign["Age_Max"]-ign["Age_Min"])/2;
-# Find points with < 50 Ma absolute uncertainty
-t = (ign["err"]["Age"] .< 50) .| isnan.(ign["err"]["Age"])
-# Set 50 Ma minimum age uncertainty (1-sigma)
-ign["err"]["Age"][t] .= 50
-
-# Clean up data before resampling
-# Start with all Fe as FeO TODO before or after resample? TODO what error to use for binned FeO?
-ign["FeO"] = feoconversion.(ign["FeO"], ign["Fe2O3"], ign["FeOT"], ign["Fe2O3T"])
-
-# Reject samples with suspicious anhydrous normalizations
-anhydrousnorm = fill(false, length(ign[RESAMPLED_ELEMENTS[1]]))
-for i in 1:length(ign[RESAMPLED_ELEMENTS[1]]) # for every sample 
-    elts = [ign[elt][i] for elt in COMPOSITION_ELEMENTS[1:8]] # sum of percents for every sample 
-    total = sum(elts)
-    anhydrousnorm[i] = (total < 101) & (total > 90) # is this sample reasonable? (all NaNs will return false)
-end 
-println("Throwing away $(length(ign[RESAMPLED_ELEMENTS[1]]) - sum(anhydrousnorm)) samples because of suspicious anhydrous normalizations or all NaN values")
-
-for elt in RESAMPLED_ELEMENTS 
-    ign[elt] = ign[elt][anhydrousnorm]
-    ign["err"][elt] = ign["err"][elt][anhydrousnorm]
-end 
 
 # Set undefined elements for bulk elts to average, so they don't go NaN in resample. 
 for e in COMPOSITION_ELEMENTS
     ign[e][isnan.(ign[e])] .= nanmean(ign[e])
 end
 
-
 # Resample
-# TODO should I resample weighting for uniform SiO2?
 if (parsed_args["weight"] == "silica") # weight according to silica content
     throw(AssertionError("Hey, we decided weighting by silica is bad because we want representative 
         proportions of compositions!"))
