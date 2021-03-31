@@ -26,6 +26,18 @@ function mean!(running::RunningMean, new::Number)
 end 
 
 """
+Stored info for normalizing samples. Used in some inversion models (PCA and linear)
+"""
+struct Norm 
+	std::Float64
+	mean::Float64
+end 
+
+function normalize(norm::Norm, arr::Array)
+	return (arr .- norm.mean) ./ norm.std
+end
+
+"""
 Normalize each row of input matrix (in place)
 """
 function normalizeComp!(a::AbstractArray{Float64, 2})
@@ -38,6 +50,30 @@ end
 function inverseMean(a::AbstractArray{Float64})
 	return 1/(nanmean(1 ./ a))
 end 
+
+"""
+Convert Dabie compositions to Perplex / Ign 
+"""
+function convert_dabie(f::String)
+	comps, h = readdlm(f, ',', header=true)
+	h = h[:]
+	sample_names = comps[:,1][:]
+	comp_compat = zeros((size(comps,1),length(COMPOSITION_ELEMENTS)))
+	for (j, name) in enumerate(COMPOSITION_ELEMENTS)
+	    if name == "H2O_Total"
+	        name = "H2OC"
+	    end
+	    if name == "FeO"
+	        feoi = findfirst(isequal("FeO"),h)
+	        fe2o3i = findfirst(isequal("Fe2O3"), h)
+	        feo = [feoconversion(comps[i, feoi], comps[i, fe2o3i]) for i in 1:size(comps,1)]
+	        comp_compat[:,j] .= feo
+	    else
+	        comp_compat[:, j] .= comps[:,findfirst(isequal(name), h)]
+	    end
+	end
+	return comp_compat, sample_names
+end
 
 """
 Write options to option file
