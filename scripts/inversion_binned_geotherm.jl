@@ -16,6 +16,7 @@ include("../src/inversionModel.jl")
 include("../src/invertData.jl")
 include("../src/vpOnlyModel.jl")
 include("../src/vpRhoModel.jl")
+include("../src/linearModel.jl")
 include("../src/bin.jl")
 include("../src/config.jl")
 
@@ -25,14 +26,14 @@ s = ArgParseSettings()
         help = "Folder for data files"
         arg_type= String
         default="remote/base"
-    "--name"
+    "--name", "-o"
     	help = "Name of inversion run / folder to output results"
     	arg_type = String 
     	default = "default"
     "--model", "-m"
         help = "Type of model to use. Allowed: inversion (PCA), range (range of nearby samples)"
         arg_type = String
-        range_tester = x -> (x in ["inversion","range", "vprange", "vprhorange"])
+        range_tester = x -> (x in ["inversion","range", "linear", "vprange", "vprhorange"])
         default = "range"
     "--num_invert", "-n" 
     	help = "How many resampled Crust1.0 samples to invert?"
@@ -46,7 +47,7 @@ s = ArgParseSettings()
     "--data_source"
     	help = "Source for seismic data"
         arg_type = String
-        range_tester = x -> (x in ["Shen","Crust1.0"])
+        range_tester = x -> (x in ["Shen","Crust1.0", "Dabie", "DabieRG"])
         default = "Crust1.0"
     "--data_source_uncertainty"
     	help = "Uncertainty as a fraction of std of this data set"
@@ -118,6 +119,8 @@ function run(parsed_args, outputPath)
 		end 
 	elseif parsed_args["model"] == "inversion"
 		models = makeModels(parsed_args["data_prefix"], modelType=InversionModel, crackFile=crackFile)
+	elseif parsed_args["model"] == "linear"
+		models = makeModels(parsed_args["data_prefix"], modelType=LinearModel, crackFile=crackFile)
 	end 
 
 	# Get data to invert (resampled Crust1.0 data)
@@ -171,7 +174,7 @@ function run(parsed_args, outputPath)
 			["bin"], 
 			reshape(PERPLEX_ELEMENTS, (1,nelts)).*" error") # errors on inverted data 
 
-		if parsed_args["crack"] > 0
+		if (parsed_args["crack"] > 0) & (parsed_args["model"] == "range") # only range model preserves 1:1 sample indexing
 			(cracks, crack_header) = readdlm(crackFile, ',', header=true)
 			out_cracks = Array{Any,2}(undef, (size(results[l],1), size(cracks,2)))
 			for j in 1:size(out_cracks,1)

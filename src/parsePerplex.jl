@@ -21,6 +21,7 @@ pmap = Dict([("om", ["jd", "di"]), # om = 1/2 jd + 1/2 di
         ("ammo2", ["anth", "fanth"]), # 2/7, 5/7 
         ("ogl_dqf", ["gl"]),
         ("ged_dqf", ["ged"]),
+        ("parg_dqf", ["parg"]),
         ("mpa", ["parg", "anth"]), # actually mpa      = 1 parg - 1 tr +1 anth 
         ("omrb_dqf", ["gl", "acm"]), # actually omrb_dqf = 1 gl -2 jd +2 acm
         ("tbit", ["phl", "ru"]), # actually tbit = 1 phl - 1 br + 1 ru 

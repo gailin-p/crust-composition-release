@@ -94,7 +94,7 @@ function worker()
 		end
 
 		# get formation depth to 550, depth 
-		formation = crustDistribution.getFormationParams(n)
+		#formation = crustDistribution.getFormationParams(n)
 
 		# Run perplex  
 		for i in 1:n 
@@ -103,42 +103,44 @@ function worker()
 			tc1 = requested[i,findfirst(isequal("geotherm"),PERPLEX_ELEMENTS)]
 			layers = requested[i,findfirst(isequal("upper"),PERPLEX_ELEMENTS):findfirst(isequal("lower"),PERPLEX_ELEMENTS)]
 			exhumation = requested[i,findfirst(isequal("exhumed"),PERPLEX_ELEMENTS)]
+			pushfirst!(layers, 0.0) # first boundary is surface 
 
 			if index == -1 # out of real samples 
 				break
 			end
 
-			formation_dtdz = 550/formation[i,1]
-			formation_depth = formation[i,2]
-			geotherm = formation_dtdz/dpdz # dt/dp 
-        	#P_range = [1, ceil(Int,layers[3]*dpdz)] # run to base of crust. 
-        	P_range = [formation_depth*(9/10)*dpdz, formation_depth*(11/10)*dpdz] # we only need a small range around formation t, p
-
-        	# Run perplex
-        	perplex_configure_geotherm(perplex, scratch, comp, PERPLEX_COMPOSITION_ELTS,
-                P_range, 273.15, geotherm, dataset=dataset, solution_phases=solutions,
-                excludes=fluid_endmembers, index=rank, npoints=npoints)
-            point = perplex_query_point(perplex, scratch, formation_depth*dpdz, index=rank)
-
-            try 
-				properties = get_system_props(point)
-				endmembers = parse_perplex_point(point)
-
+			for l in 1:3
+				depth = (layers[l] + layers[l+1])/2 # middle of layer 
 				dtdz = 550.0/tc1 # sampling geotherm 
-				pushfirst!(layers, 0.0) # first boundary is surface 
-				for l in 1:3
-					depth = (layers[l] + layers[l+1])/2 # middle of layer 
+				formation_depth, formation_dtdz = crustDistribution.getFormationParams(depth, dtdz)
+
+				#formation_dtdz = 550/formation[i,1]
+				#formation_depth = formation[i,2]
+				geotherm = formation_dtdz/dpdz # dt/dp 
+	        	#P_range = [1, ceil(Int,layers[3]*dpdz)] # run to base of crust. 
+	        	P_range = [formation_depth*(9/10)*dpdz, formation_depth*(11/10)*dpdz] # we only need a small range around formation t, p
+
+	        	# Run perplex
+	        	perplex_configure_geotherm(perplex, scratch, comp, PERPLEX_COMPOSITION_ELTS,
+	                P_range, 273.15, geotherm, dataset=dataset, solution_phases=solutions,
+	                excludes=fluid_endmembers, index=rank, npoints=npoints)
+	            point = perplex_query_point(perplex, scratch, formation_depth*dpdz, index=rank)
+
+	            try 
+					properties = get_system_props(point)
+					endmembers = parse_perplex_point(point)
+
 					P = dpdz*depth + 280 # add surface pressure (bar)
 					T = dtdz*depth + 273.15 # add surface temp (K)
 					rho, vp, vs = get_seismic(T, P, properties, endmembers, st)
 					results[1,2:4,l,i] = [rho, vp, vp/vs] # rho, vp, vpvs 
+				catch e
+					#if (isa(e, ParsePerplexError) | isa(e, SeismicError))
+						println("\r\n\r\nCannot process sample due to \r\n $e")
+					#else 
+					#	throw(e)
+					#end 
 				end 
-			catch e
-				#if (isa(e, ParsePerplexError) | isa(e, SeismicError))
-					println("\r\n\r\nCannot process sample due to \r\n $e")
-				#else 
-				#	throw(e)
-				#end 
 			end
 
         	# Set index in results 

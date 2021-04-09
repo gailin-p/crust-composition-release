@@ -16,7 +16,7 @@ s = ArgParseSettings()
     "--data_path", "-p"
         help = "Folder for data files"
         arg_type= String
-        default="remote/base"
+        default="remote/base/default"
     "--compare_rg"
     	help = "Compare to Rudnick and Gao"
     	arg_type = Bool
@@ -64,7 +64,7 @@ for (l, file) in enumerate(files)
 
 	println("$layer")
 	println("$(header[si_index:co_index])")
-	println(join(round.(means, sigdigits=3), " & "))
+	println(join(round.(means, sigdigits=3), "\t"))
 	#println(join(round.(sems, sigdigits=3), " , "))
 
 	si_means[l] = means[1]

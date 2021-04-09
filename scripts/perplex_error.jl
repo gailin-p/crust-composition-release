@@ -12,6 +12,7 @@ include("../src/seismic.jl")
 include("../src/parsePerplex.jl")
 include("../src/cracks.jl")
 include("../src/crustDistribution.jl")
+include("../src/utilities.jl")
 
 s = ArgParseSettings()
 @add_arg_table s begin
@@ -55,33 +56,33 @@ end
 
 # "SiO2","TiO2","Al2O3","FeO","MgO","CaO","Na2O","K2O","H2O_Total","CO2"
 # From kern dabie  
-comps, h = readdlm("data/kern_dabie_comp.csv", ',', header=true)
-h = h[:]
-sample_names = comps[:,1][:]
-comp_compat = zeros((size(comps,1),length(COMPOSITION_ELEMENTS)))
-for (j, name) in enumerate(COMPOSITION_ELEMENTS)
-    if name == "H2O_Total"
-        name = "H2OC"
-    end
-    if name == "FeO"
-        feoi = findfirst(isequal("FeO"),h)
-        fe2o3i = findfirst(isequal("Fe2O3"), h)
-        feo = [feoconversion(comps[i, feoi], comps[i, fe2o3i]) for i in 1:size(comps,1)]
-        comp_compat[:,j] .= feo
-    else
-        comp_compat[:, j] .= comps[:,findfirst(isequal(name), h)]
-    end
-end
-
+# comps, h = readdlm("data/kern_dabie_comp.csv", ',', header=true)
+# h = h[:]
+# sample_names = comps[:,1][:]
+# comp_compat = zeros((size(comps,1),length(COMPOSITION_ELEMENTS)))
+# for (j, name) in enumerate(COMPOSITION_ELEMENTS)
+#     if name == "H2O_Total"
+#         name = "H2OC"
+#     end
+#     if name == "FeO"
+#         feoi = findfirst(isequal("FeO"),h)
+#         fe2o3i = findfirst(isequal("Fe2O3"), h)
+#         feo = [feoconversion(comps[i, feoi], comps[i, fe2o3i]) for i in 1:size(comps,1)]
+#         comp_compat[:,j] .= feo
+#     else
+#         comp_compat[:, j] .= comps[:,findfirst(isequal(name), h)]
+#     end
+# end
+comp_compat, sample_names = convert_dabie("data/kern_dabie_comp.csv")
 
 
 ### Choose some conditions 
 # median depth to 550 isotherm 
-isotherm, depth = crustDistribution.getFormationParams()
-println("Using formation params: depth to 550 $isotherm, depth $depth")
+depth, dtdz = crustDistribution.getFormationParams()
+println("Using formation params: temp $(dtdz*depth) deg C, depth $depth km")
 #isotherm = 39.0;
 dpdz = 2900. * 9.8 / 1E5 * 1E3; # bar/km 
-dtdz = 550.0/isotherm # K/km 
+#dtdz = 550.0/isotherm # K/km 
 # perplex at 1/2 median depth of crust
 #depth = 18
 # calc t and p 

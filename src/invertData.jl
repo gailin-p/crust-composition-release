@@ -150,6 +150,65 @@ function FRSeismic(layer::Integer; model::Integer=2, n::Integer=400, resample::B
 end 
 
 
+# Return (rho, vp, vp/vs, geotherm)
+# Uncertainty is fraction of Crust1.0 std for this layer to apply as std of gaussian noise. 
+function getTestSeismic(n, layer, uncertainty, samples=["D95-13", "D95-16", "HL3"])
+    if !(layer in [6,7,8])
+        throw(ArgumentError("Layer must be 6, 7, or 8 (crysteline Crust1 layers)"))
+    end
+    
+    if isfile("data/kern_dabie_comp.csv")
+      compdat, comph = readdlm("data/kern_dabie_comp.csv", ',', header=true)
+      seismicdat, seismich = readdlm("data/kern_dabie_seismic.csv", ',', header=true);
+    elseif isfile("../data/kern_dabie_comp.csv")
+      compdat, comph = readdlm("../data/kern_dabie_comp.csv", ',', header=true)
+      seismicdat, seismich = readdlm("../data/kern_dabie_seismic.csv", ',', header=true);
+    else
+      throw(Error("Cannot find file kern_dabie_comp.csv in data dir"))
+    end 
+    comph = comph[:]
+    seismich = seismich[:]
+
+    # Gather data... 
+    crust = crustDistribution.getCrustParams(n, uncertain=true) # depth to 550, base of upper, middle, lower
+    geotherm = crust[:,1]
+    boundaries = hcat(fill(0, n), crust[:,2:end]) # first boundary is 0 
+    layer = layer - 5 # now layer of interest is 1, 2, or 3 
+    depths = ((boundaries[:,layer+1] .- boundaries[:,layer]) ./ 2) .+ boundaries[:,layer] # middle of layer
+    
+    # Sample params 
+    if compdat[:,1] != seismicdat[:,1]
+        error("Sample names do not line up for Dabie composition and seismic files.")
+    end
+    samplei = findfirst(isequal(samples[layer]), compdat[:,1])
+    rhoj = findfirst(isequal("rho (g/cm^3)"), seismich)
+
+    vp0 = seismicdat[samplei, findfirst(isequal("Vp0"), seismich)]
+    vs0 = seismicdat[samplei, findfirst(isequal("Vs0"), seismich)]
+    dvpdp = seismicdat[samplei, findfirst(isequal("dVp=dP"), seismich)]*(10^-4)/10 # MPa to bar 
+    dvsdp = seismicdat[samplei, findfirst(isequal("dVs=dP"), seismich)]*(10^-4)/10 # MPa to bar
+    dvpdt = seismicdat[samplei, findfirst(isequal("dVp=dT"), seismich)]*(-10^-4)
+    dvsdt = seismicdat[samplei, findfirst(isequal("dVs=dT"), seismich)]*(-10^-4)
+    
+    # For each crust point, estimate vp and vs at depths 
+    rho = fill(seismicdat[samplei, rhoj]*1000, n)
+    
+    dtdz = 550 ./ geotherm
+    
+    vp = vp0 .+ (dvpdp .* (dpdz .* depths)) .+ (dvpdt .* (dtdz .* depths))
+    vs = vs0 .+ (dvsdp .* (dpdz .* depths)) .+ (dvsdt .* (dtdz .* depths))
+
+    # Use uncertainty as portion of crust1 std for comparability 
+    (vp_c, vs_c, rho_c) = find_crust1_seismic(crustDistribution.all_lats, crustDistribution.all_longs, layer+5)
+    rho = rho .+ uncertainty*std(rho_c)*randn(n)
+    vp = vp .+ uncertainty*std(vp_c)*randn(n)
+    vs = vs .+ uncertainty*std(vs_c)*randn(n)
+    
+    return (rho, vp, vp ./ vs, geotherm)
+    
+end 
+
+
 """
     getAllSeismic()
 Return a touple of weights and lists of seismic values (rho, vp, vp/vs, geotherm)
@@ -158,6 +217,8 @@ Optionally resample (using weights corresponding to area of each 1x1 degree squa
 Latlong info optionally returned. 
 By default, resample with Tc1 ages 
 Optionally add a systematic bias to Crust1.0 seismic data after resampling. 
+
+TODO THIS IS TERRIBLE SPAGHETTI CODE, REFACTOR ME ! 
 """
 function getAllSeismic(layer::Integer; 
   ageModel::AgeModel=Tc1Age(), n::Integer=50000, resample::Bool=true, systematic::Bool=false, 
@@ -233,6 +294,23 @@ function getAllSeismic(layer::Integer;
       longs = longs[good]
       geotherms = geotherms[good]
       crustbase=crustbase[good]
+
+    elseif (dataSrc == "Dabie") | (dataSrc == "DabieRG") ## Special case: "fake earth" where we know target comp. 
+      if dataSrc == "Dabie"
+        rho, vp, vpvs, geotherms = getTestSeismic(n, layer, dataUncertainty)
+      else
+        rho, vp, vpvs, geotherms = getTestSeismic(n, layer, dataUncertainty, ["D95-44", "HT4", "D95-11"])
+      end
+      lats = fill(NaN, n)
+      longs = fill(NaN, n)
+      ages = fill(NaN, n)
+      crustbase = fill(NaN, n)
+      if latlong 
+        return ((rho, vp, vpvs, geotherms), (crustbase, ages, lats, longs))
+      else
+          return ((rho, vp, vpvs, geotherms), (ages))
+      end 
+
     else 
       throw("Unrecognized data source")
     end 

@@ -256,6 +256,9 @@ function apply_cracking(rho, vp, vpvs, profile::CrackProfile)
 	Kw, mud, rho_w_pore = apply_cracking(K0, mu0, rho, 
 		profile.cracking_fn, profile.porosity, 
 		profile.fluid_density, profile.K_fluid)
+	if (Kw < 0) | (mud < 0) # Too many cracks. 
+		return NaN, NaN, NaN 
+	end 
 	vpw_pore, vsw_pore = speed_from_moduli(Kw, mud, rho_w_pore)
 
 	# # Repeat for cracking (on top of prior props)

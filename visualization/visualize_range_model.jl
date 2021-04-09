@@ -24,6 +24,10 @@ s = ArgParseSettings()
     	help = "Plot Crust1.0 test points on top of model plot?"
     	arg_type=Bool
     	default=true
+    "--show_inverted"
+    	help = "Plot actual inverted data points on top of model plot?"
+    	arg_type=Bool
+    	default=false
 end
 parsed_args = parse_args(ARGS, s)
 
@@ -32,26 +36,11 @@ crackFile = "data/$(parsed_args["data_prefix"])/$(parsed_args["name"])/crack_pro
 if !isfile(crackFile)
 	crackFile = ""
 end
-models = makeModels(parsed_args["data_prefix"], modelType=RangeModel, crackFile=crackFile)
 
-# histograms of vp, vs, rho for each model 
-plots = [] 
-for layer in LAYER_NAMES 
-	for model in models.models[layer]
-		push!(plots, histogram(model.seismic[:,2], legend=false, xlims=(2000,4000)));
-	end 
-end 
+models = makeModels(parsed_args["data_prefix"], modelType=RangeModel, crackFile=crackFile)
 
 outputPath = "data/$(parsed_args["data_prefix"])/$(parsed_args["name"])/output/range_model"
 mkpath(outputPath)
-
-# for (i, p) in enumerate(plots)
-# 	savefig(p, "$outputPath/rho-hist-$i.pdf")
-# end
-
-p = plot(plots..., size=(1000,2000), layout=(models.nbins, length(LAYER_NAMES))); 
-
-savefig(p, "$outputPath/rho-hist.pdf")
 
 layer_plots = []
 for (l, layer) in enumerate(LAYER_NAMES)
@@ -70,14 +59,20 @@ for (l, layer) in enumerate(LAYER_NAMES)
 			tests, _ = getAllSeismic(l+5, resample=false)
 			tests = unique(hcat(tests[1:end-1]...), dims=1) # only 20 unique combos in unresampled data 
 			plot!(q, tests[:,1], tests[:,2], tests[:,3], 
-			seriestype=:scatter, markersize=8, markeralpha=1, markerstrokewidth=0, legend=false, markercolor=:green2)
+			seriestype=:scatter, markersize=5, markeralpha=1, markerstrokewidth=0, legend=false, markercolor=:green2)
+		end
+		if parsed_args["show_inverted"] # Plot inverted points on same axes 
+			resdat, resh = readdlm("data/$(parsed_args["data_prefix"])/$(parsed_args["name"])/results-$layer.csv", ',', header=true)
+			plot!(q, resdat[:,1], resdat[:,2], resdat[:,3], 
+			seriestype=:scatter, markersize=2, markeralpha=1, markerstrokewidth=0, legend=false, markercolor=:cyan)
 		end
 		for model in models.models[layer]
 			total = size(model.seismic,1)
 			plot!(q, model.seismic[1:models.nbins:total,2], # rho
 				model.seismic[1:models.nbins:total,3], model.seismic[1:models.nbins:total,4], # vp, vp/vs 
-				camera=camera, marker_z=model.comp[1:models.nbins:total,2], zlims=(1.5,3.5),
-				seriestype=:scatter, markersize=1, markerstrokewidth=0) # labels (xlabel="Rho (kg/m^3)", ylabel="Vp (m/s)", zlabel="Vp/Vs") look awful
+				camera=camera, marker_z=model.comp[1:models.nbins:total,2], zlims=(1.5,2.25),
+				xlims=(2250,4000), ylims=(4.75,8.25),
+				seriestype=:scatter, markersize=2, markerstrokewidth=0) # labels (xlabel="Rho (kg/m^3)", ylabel="Vp (m/s)", zlabel="Vp/Vs") look awful
 		end
 		if i==1 
 			push!(layer_plots, q)

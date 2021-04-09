@@ -22,14 +22,6 @@ include("cracks.jl")
 prop_labels = ["rho,kg/m3","vp,km/s","vp/vs"] # properties in this order
 
 """
-Information for normalizing samples 
-"""
-struct Norm 
-	std::Float64
-	mean::Float64
-end 
-
-"""
 Allow plug-in of different model types. 
 Every model must implement a constructor that takes ign and perplex data, 
 and an estimateComposition method that takes test seismic data, so that 
@@ -76,10 +68,6 @@ struct ModelCollection
 	bins::AbstractRange
 	nbins::Integer
 end  
-
-function normalize(norm::Norm, arr::Array)
-	return (arr .- norm.mean) ./ norm.std
-end
 
 """
 	RangeModel
@@ -298,7 +286,7 @@ end
 
 # Just returns one elemnt of interest 
 function resultSize(model::InversionModel)
-	return 1
+	return length(PERPLEX_ELEMENTS) ## Just to match inverison model 
 end
 
 function resultSize(model::BadModel)
@@ -329,7 +317,7 @@ function InversionModel(ign::Array{Float64, 2}, seismic::Array{Float64, 2})
     			   normalize(vpvsNorm,seismic[:,4])')
 
     # Discard NaN values 
-    test = .!(isnan.(samples[1,:]))
+    test = .!(isnan.(sum(samples,dims=1)))[:]
     samples = samples[:,test] 
 
     # Do we have enough valid perplex results in this bin? 
@@ -339,7 +327,9 @@ function InversionModel(ign::Array{Float64, 2}, seismic::Array{Float64, 2})
     end
 
     # PCA
+    print("Building PCA model from $(size(samples))")
     pca = fit(PCA, samples)
+    print(pca)
     pca_samples = transform(pca, samples)[1,:]
 
     # Bin  
@@ -389,11 +379,20 @@ function estimateComposition(model::InversionModel,
 
     # Run on test data 
     m_itp = model.interp(pca_samples)
+    print("guy with shape $(size(m_itp))")
+    print("just inverted got mean $(nanmean(m_itp))")
 
     # Interpolate errors
     e_itp = model.error_interp(pca_samples)
 
-    return (m_itp, e_itp)
+    # For compatability, should return things the size of that returned by range model even though only SiO2 is solved for 
+    res = fill(NaN, (length(rho), length(PERPLEX_ELEMENTS)))
+    err = fill(NaN, (length(rho), length(PERPLEX_ELEMENTS)))
+    SI_index = findfirst(isequal("SiO2"), PERPLEX_ELEMENTS)
+    res[:,SI_index] = m_itp
+    err[:,SI_index] = e_itp 
+
+    return (res, err)
 end
 
 """
@@ -497,9 +496,9 @@ function makeModels(data_location::String; modelType::DataType=RangeModel, crack
 		perplexFile = "data/"*data_location*"/perplex_out_$(bin_num).h5"
 		perplexresults = h5read(perplexFile, "results")
 
-		perplexresults[2,:,:] += (randn(size(perplexresults, 2), size(perplexresults,3)) .* 81.9)
-		perplexresults[3,:,:] += (randn(size(perplexresults, 2), size(perplexresults,3)) .* .1941)
-		perplexresults[4,:,:] += (randn(size(perplexresults, 2), size(perplexresults,3)) .* .01933)
+		# perplexresults[2,:,:] += (randn(size(perplexresults, 2), size(perplexresults,3)) .* 81.9)
+		# perplexresults[3,:,:] += (randn(size(perplexresults, 2), size(perplexresults,3)) .* .1941)
+		# perplexresults[4,:,:] += (randn(size(perplexresults, 2), size(perplexresults,3)) .* .01933)
 
 		if size(ign,1) != size(perplexresults,3)
 			throw(AssertionError("Size of ign does not match size of perplex results from $(fileName)"))

@@ -104,7 +104,7 @@ end
 tmin = 0
 tmax = 4000
 nbins = 4
-samplePath = "data/remote/base/bsr_ignmajors_1.csv"
+samplePath = "data/remote/base_nobin/bsr_ignmajors_1.csv"
 ign, h = readdlm(samplePath, ',', header=true)
 age_i = findfirst(isequal("Age"),PERPLEX_ELEMENTS)
 si_i = findfirst(isequal("SiO2"),PERPLEX_ELEMENTS)

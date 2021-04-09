@@ -23,7 +23,12 @@ end
 
 # Default. TODO include this file in data dir 
 function SeismicTransform()
-    return SeismicTransform("/users/gailin/resources/perplex-stable/hpha11ver.dat")
+    if isfile("data/hpha11ver.dat")
+        return SeismicTransform("data/hpha11ver.dat")
+    elseif isfile("../data/hpha11ver.dat")
+        return SeismicTransform("../data/hpha11ver.dat")
+    end
+    throw(SeismicError("Can't find file hpha11ver.dat in data dir"))
 end
 
 

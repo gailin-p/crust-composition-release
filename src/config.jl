@@ -26,5 +26,5 @@ const LAYER_NAMES = (UPPER, MIDDLE, LOWER)
 # ign file 
 const IGN_FILE = "igncn1.mat"
 
-dpdz = 2900. * 9.8 / 1E5 * 1E3; # bar/km.  density * gravity / 100,000  * 1000 m/km
+const dpdz = 2900. * 9.8 / 1E5 * 1E3; # bar/km.  density * gravity / 100,000  * 1000 m/km
 
