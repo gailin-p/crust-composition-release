@@ -7,6 +7,7 @@ using Distributions
 using GaussianMixtures
 using MultivariateStats
 using ProgressMeter
+using StatGeochem
 
 include("../src/config.jl")
 include("../src/crustDistribution.jl")
@@ -73,26 +74,29 @@ function run_mcmc(n::Integer, runner::MCMCRunner, data::DataSample)
 	return samples, accepted, logprob
 end
 
-function PerplexConfig()
+function PerplexConfig(perplex, scratch)
 	solutions = "O(HP)\nOpx(HP)\nOmph(GHP)\nGt(HP)\noAmph(DP)\nGlTrTsPg\nT\nB\nAnth\nChl(HP)"*
 		"\nBio(TCC)\nMica(CF)\nCtd(HP)\nIlHm(A)\nSp(HP)\nSapp(HP)\nSt(HP)\nfeldspar"*
 		"\nDo(HP)\n"
 	npoints = 20
 	fluid_endmembers = "abL\nanL\ndiL\nenL\nfaL\nfliq\nfoL\nkspL\nmliq\nqL\nsiL\nq8L\nfa8L\nfo8L\nsil8L\nh2oL\nh2o8L\n"
-
+	
 	dataset = "hpha11ver.dat"
-	perplex = "/Users/gailin/resources/perplex-stable/"
-	scratch = "/Users/gailin/dartmouth/crustal_structure/perplexed_pasta/"
 
 	st = SeismicTransform() 
 
 	return PerplexConfig(solutions, dataset, perplex, scratch, fluid_endmembers, npoints, st)
+end 
+
+
+function PerplexConfig()
+	return PerplexConfig("/Users/gailin/resources/perplex-stable/", "/Users/gailin/dartmouth/crustal_structure/perplexed_pasta/")
 end
 
 """
 Use some local default locations of resampled earthchem and perplex error files 
 """
-function MCMCRunner()
+function MCMCRunner(perplex_config=PerplexConfig())
 	# Prior 
 	ign, h = readdlm("../data/remote/base_nobin/bsr_ignmajors_1.csv", ',', header=true)
 	ign = ign[:,2:11] # no index, no context 
@@ -114,7 +118,7 @@ function MCMCRunner()
 	# updates as fraction of avg composition 
 	update = [58.67910944210001, 0.9524187580000001, 14.5812233658, 7.2417907846, 4.8595292555, 5.957280192800002, 3.183153271, 2.1429591833, 1.8062233445, 0.5963123932000001] ./ 10
 
-	return MCMCRunner(update, mw, PerplexConfig(), N_er)
+	return MCMCRunner(update, mw, perplex_config, N_er)
 end
 
 function normalize(elts::Array{Float64,1})
