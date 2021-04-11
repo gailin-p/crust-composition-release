@@ -103,7 +103,9 @@ for n in 1:parsed_args["n"]
 	println("$n: Using formation params: temp $(dtdz*depth) deg C, depth $depth km")
 
 	# Now run 
-	out = fill(NaN, (nsamples, length(out_header)))
+	if n > 1 # use a local out var 
+		out = fill(NaN, (nsamples, length(out_header)))
+	end
 	for i in 1:size(comp_compat,1)
 		# Run perplex
 		comp = comp_compat[i,:]
