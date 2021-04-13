@@ -103,9 +103,7 @@ for n in 1:parsed_args["n"]
 	println("$n: Using formation params: temp $(dtdz*depth) deg C, depth $depth km")
 
 	# Now run 
-	if n > 1 # use a local out var 
-		out = fill(NaN, (nsamples, length(out_header)))
-	end
+        out .= NaN
 	for i in 1:size(comp_compat,1)
 		# Run perplex
 		comp = comp_compat[i,:]
@@ -160,14 +158,14 @@ for n in 1:parsed_args["n"]
 			# end 
 		end
 		# Save if many conditions 
-		many_out[n, :, 1] .= depth 
-		many_out[n, :, 2] .= depth * dtdz
-		many_out[n, :, 3:9] .= out[:,1:7]
-		many_out[n, :, 10] .= (out[:,6] ./ out[:,7]) # vs 
-		many_out[n, :, 11] .= (out[:,6] .- out[:,11]) # vp er 
-		many_out[n, :, 12] .= (out[:,7] .- out[:,12]) # vpvs er 
-		many_out[n, :, 13] .= (out[:,6] ./ out[:,7] .- (out[:,11] ./ out[:,12])) # vs er 
-	end 
+          		    many_out[n, :, 1] .= depth 
+		    many_out[n, :, 2] .= depth * dtdz
+		    many_out[n, :, 3:9] .= out[:,1:7]
+		    many_out[n, :, 10] .= (out[:,6] ./ out[:,7]) # vs 
+		    many_out[n, :, 11] .= (out[:,6] .- out[:,11]) # vp er 
+		    many_out[n, :, 12] .= (out[:,7] .- out[:,12]) # vpvs er 
+		    many_out[n, :, 13] .= (out[:,6] ./ out[:,7] .- (out[:,11] ./ out[:,12])) # vs er 
+             	end 
 end
 
 if parsed_args["n"] == 1
