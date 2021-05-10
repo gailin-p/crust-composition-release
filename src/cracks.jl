@@ -139,7 +139,7 @@ end
 
 # Load data 
 # from Rivers and Carmichael 1987, "Ultrasonic Studies of Silicate Melts"
-magma_dat, header = isfile("data/magma_moduli.csv") ? readdlm("data/magma_moduli.csv", ',', header=true) : readdlm("../data/magma_moduli.csv", ',', header=true)
+magma_dat, header = isfile("resources/magma_moduli.csv") ? readdlm("resources/magma_moduli.csv", ',', header=true) : readdlm("../resources/magma_moduli.csv", ',', header=true)
 magma_densities = magma_dat[:,3] .* 1000
 magma_K = magma_dat[:, 5]
 relerr_magma_K = .03 
@@ -227,7 +227,7 @@ function write_profiles(profiles::Array{Crack, 1}, filename::String)
 	writedlm(filename, output, ',')
 end 
 
-function apply_cracking(rho, vp, vpvs, profile::NoCrack)
+function apply_cracking(rho::Float64, vp::Float64, vpvs::Float64, profile::NoCrack)
 	return rho, vp, vpvs
 end 
 
@@ -248,7 +248,7 @@ function apply_cracking(K0, mu0, rho0, fn::Function, porosity, fluid_density, fl
 	return Kw, mud, rho_w
 end 
 
-function apply_cracking(rho, vp, vpvs, profile::CrackProfile)
+function apply_cracking(rho::Float64, vp::Float64, vpvs::Float64, profile::CrackProfile)
 	vs = vp/vpvs
 	K0, mu0 = moduli_from_speeds(vp, vs, rho)
 
@@ -268,6 +268,13 @@ function apply_cracking(rho, vp, vpvs, profile::CrackProfile)
 	vpw_crack, vsw_crack = speed_from_moduli(Kw, mud, rho_w_crack)
 
 	return rho_w_crack, vpw_crack, vpw_crack/vsw_crack
+end 
+
+function apply_cracking!(rho::Array{Float64,1}, vp::Array{Float64,1}, vpvs::Array{Float64,1}, profiles::Array{Crack,1})
+	for i in length(rho)
+		rho[i], vp[i], vpvs[i] = apply_cracking(rho[i], vp[i], vpvs[i], profiles[i])
+	end 
+	return rho, vp, vpvs 
 end 
 
 """

@@ -18,7 +18,7 @@ using Random
 
 # For resampling 
 #  If running from jupyter notebook, need relative path 
-uncertainty_dat = isfile("igncn1.mat") ? matread("igncn1.mat")["err2srel"] : matread("../igncn1.mat")["err2srel"]
+uncertainty_dat = matread(IGN_FILE)["err2srel"]
 relerr_tc1 = uncertainty_dat["tc1Crust"]/2
 
 # 1 deg lat/long to account for uncertainty in placement of Crust1 boundaries. 
@@ -57,7 +57,7 @@ Load presaved dataset or write dataset
 """
 function __init__()
     # Allow different relative paths so works in jupyter notebook or script. 
-    file = isdir("../data") ? "../data/crustDistribution.jld" : "data/crustDistribution.jld"
+    file = isdir("../resources") ? "../resources/crustDistribution.jld" : "resources/crustDistribution.jld"
     if isfile(file)
         loadSavedCrust(file)
     else 
@@ -207,8 +207,8 @@ function getFormationParams()
     #depths = depth[test,:] ./ 2
     #w = Weights(weights[test])
     #return (mean(depths[:,1], w), mean(depths[:,4], w))
-    t = 450 # degrees C 
-    d = 20 # km 
+    t = 550 # degrees C 
+    d = 30 # km 
     return (d, t/d)
 end
 

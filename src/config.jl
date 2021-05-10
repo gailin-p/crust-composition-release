@@ -24,7 +24,17 @@ const LOWER="lower"
 const LAYER_NAMES = (UPPER, MIDDLE, LOWER)
 
 # ign file 
-const IGN_FILE = "igncn1.mat"
+const IGN_FILE = isfile("resources/igncn1.mat") ? "resources/igncn1.mat" : "../resources/igncn1.mat"
 
 const dpdz = 2900. * 9.8 / 1E5 * 1E3; # bar/km.  density * gravity / 100,000  * 1000 m/km
 
+##### Perple_X config
+DEFAULT_DATASET = "hpha11ver.dat"
+SOLUTIONS = "O(HP)\nOpx(HP)\nOmph(GHP)\nGt(HP)\noAmph(DP)\nGlTrTsPg\nT\nB\nAnth\nChl(HP)"*
+		"\nBio(TCC)\nMica(CF)\nCtd(HP)\nIlHm(A)\nSp(HP)\nSapp(HP)\nSt(HP)\nfeldspar"*
+		"\nDo(HP)\n"
+NPOINTS = 20
+FLUID_ENDMEMBERS = "abL\nanL\ndiL\nenL\nfaL\nfliq\nfoL\nkspL\nmliq\nqL\nsiL\nq8L\nfa8L\nfo8L\nsil8L\nh2oL\nh2o8L\n"
+
+DEFAULT_PERPLEX = "/Users/gailin/resources/perplex-stable"
+DEFAULT_SCRATCH = "/Users/gailin/dartmouth/crustal_structure/perplexed_pasta/"

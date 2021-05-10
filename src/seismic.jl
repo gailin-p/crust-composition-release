@@ -23,14 +23,14 @@ end
 
 # Default. TODO include this file in data dir 
 function SeismicTransform()
-    if isfile("data/hpha11ver.dat")
-        return SeismicTransform("data/hpha11ver.dat")
-    elseif isfile("../data/hpha11ver.dat")
-        return SeismicTransform("../data/hpha11ver.dat")
+    if isfile("resources/hpha11ver.dat")
+        return SeismicTransform("resources/hpha11ver.dat")
+    elseif isfile("../resources/hpha11ver.dat")
+        return SeismicTransform("../resources/hpha11ver.dat")
     elseif isfile("/dartfs-hpc/rc/home/9/f0043n9/resources/perplex-stable/hpha11ver.dat")
         return SeismicTransform("/dartfs-hpc/rc/home/9/f0043n9/resources/perplex-stable/hpha11ver.dat")
     end
-    throw(SeismicError("Can't find file hpha11ver.dat in data dir"))
+    throw(SeismicError("Can't find file hpha11ver.dat in resources dir"))
 end
 
 

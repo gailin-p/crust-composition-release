@@ -14,9 +14,10 @@ using StatsBase
 using Statistics
 using Test 
 using Random
+using ProgressMeter: @showprogress
 
 # one std relative error. If running from jupyter notebook, need relative path 
-uncertainty_dat = isfile("igncn1.mat") ? matread("igncn1.mat")["err2srel"] : matread("../igncn1.mat")["err2srel"]
+uncertainty_dat = IGN_FILE["err2srel"]
 
 # Now using std as error, see getAllSeismic
 # relerr_rho = uncertainty_dat["Rho"]/2
@@ -149,6 +150,111 @@ function FRSeismic(layer::Integer; model::Integer=2, n::Integer=400, resample::B
   end 
 end 
 
+"""
+  getPerplexTestSeismic()
+
+Fake earth builder, using Perple_X modeling to model earth 
+
+"""
+function getPerplexTestSeismic(n, layer; nsamples=100, target=[66.6, 63.5, 53.4])
+  # Load pre-resampled ign data 
+  layer = layer - 5
+  f = isfile("resources/bsr_ignmajors_1.csv") ? "resources/bsr_ignmajors_1.csv" : "../resources/bsr_ignmajors_1.csv"
+  dat, h = readdlm(f, ',', header=true)
+  sio2 = dat[:,2]
+  indices = Int.(dat[:,1])
+
+
+  # Iterative method to find set of nsamples rocks that match target composition at this layer
+  s = sample(indices,nsamples, replace=false)
+  snew = zeros(Int, length(s))
+  snew .= s
+  best = abs(mean(sio2[s]) - target[layer])
+  while best > 1/20
+      to_replace = sample(1:nsamples)
+      new = sample(indices)
+      snew[to_replace] = new
+      if abs(mean(sio2[snew]) - target[layer]) < best
+          s .= snew
+          best = abs(mean(sio2[snew]) - target[layer])
+          #println("new best $(mean(sio2[snew]))")
+      end
+      snew .= s # reset
+  end
+  s = Int.(s)
+  # Major element comp 
+  comps = dat[s, 2:11]
+
+  ## Get crust properties 
+  crust = crustDistribution.getCrustParams(n, uncertain=true) # depth to 550, base of upper, middle, lower
+  geotherm = crust[:,1]
+  boundaries = hcat(fill(0, n), crust[:,2:end]) # first boundary is 0 
+  depths = ((boundaries[:,layer+1] .- boundaries[:,layer]) ./ 2) .+ boundaries[:,layer] # middle of layer
+  
+  ### Assign composition to each sample location 
+  assignment = sample(1:nsamples, n)
+
+  # run Perple_X for each sample, then adjust to props at each location assignend that sample 
+  st = SeismicTransform()
+  rho = zeros(n); vp = zeros(n); vs = zeros(n);
+
+  failed = zeros(0)
+  succeeded = zeros(0)
+  @showprogress "Building fake earth" for sample in 1:nsamples 
+    ####### Shared 
+    dtdz = 550.0/nanmean(geotherm) # sampling geotherm 
+    formation_depth, formation_dtdz = crustDistribution.getFormationParams(nanmean(depths), dtdz)
+
+    P_range = [formation_depth*(9/10)*dpdz, formation_depth*(11/10)*dpdz] # we only need a small range around formation t, p
+    # Run perplex
+    perplex_configure_geotherm(DEFAULT_PERPLEX, DEFAULT_SCRATCH, comps[sample,:], PERPLEX_COMPOSITION_ELTS,
+                  P_range, 273.15, formation_dtdz/dpdz, dataset=DEFAULT_DATASET, solution_phases=SOLUTIONS,
+                  excludes=FLUID_ENDMEMBERS, index=1, npoints=NPOINTS)
+    point = perplex_query_point(DEFAULT_PERPLEX, DEFAULT_SCRATCH, formation_depth*dpdz, index=1)
+    try 
+      properties = get_system_props(point)
+      endmembers = parse_perplex_point(point)
+
+      for (j, loc) in enumerate(assignment)
+        if assignment[loc] == sample 
+          P = dpdz*depths[j] + 280 # add surface pressure (bar)
+          T = geotherm[j]*depths[j] + 273.15 # add surface temp (K)
+          rho[j], vp[j], vs[j] = get_seismic(T, P, properties, endmembers, st)
+        end 
+      end
+      push!(succeeded,comps[sample,1])
+    catch e
+      #if (isa(e, ParsePerplexError) | isa(e, SeismicError))
+        println("\r\n\r\nCannot process sample due to \r\n $e")
+        println("failed sample had $(comps[sample,1]) % sio2")
+        push!(failed,comps[sample,1])
+      #else 
+      # throw(e)
+      #end 
+    end 
+  end
+
+  println("layer $layer has $(length(failed)) failed samples, mean sio2 $(mean(failed))")
+
+  rho[isnan.(rho)] .= nanmean(rho)
+  vp[isnan.(vp)] .= nanmean(vp)
+  vs[isnan.(vs)] .= nanmean(vs)
+
+  # Cracking in upper crust 
+  # if layer == 1
+  #   liquid_weights = [.5, .5, 0, 0] # fraction dry, water, magma, no cracking 
+  #   crack_porosity = .007 * .05 # total porosity * fraction crack 
+  #   pore_porosity = .007 * (1-.05) # total porosity * fraction pore 
+    
+  #   profiles = Array{Crack,1}([random_cracking(crack_porosity, pore_porosity, liquid_weights) for i in 1:n])
+  #   vpvs = vp ./ vs
+  #   rho, vp, vpvs = apply_cracking!(rho, vp, vpvs, profiles)
+  #   return rho, vp, vpvs, geotherm 
+  # end
+
+  return (rho, vp, vp ./ vs, geotherm), s
+end 
+
 
 # Return (rho, vp, vp/vs, geotherm)
 # Uncertainty is fraction of Crust1.0 std for this layer to apply as std of gaussian noise. 
@@ -157,12 +263,12 @@ function getTestSeismic(n, layer, uncertainty, samples=["D95-13", "D95-16", "HL3
         throw(ArgumentError("Layer must be 6, 7, or 8 (crysteline Crust1 layers)"))
     end
     
-    if isfile("data/kern_dabie_comp.csv")
-      compdat, comph = readdlm("data/kern_dabie_comp.csv", ',', header=true)
-      seismicdat, seismich = readdlm("data/kern_dabie_seismic.csv", ',', header=true);
-    elseif isfile("../data/kern_dabie_comp.csv")
-      compdat, comph = readdlm("../data/kern_dabie_comp.csv", ',', header=true)
-      seismicdat, seismich = readdlm("../data/kern_dabie_seismic.csv", ',', header=true);
+    if isfile("resources/dabie/kern_dabie_comp.csv")
+      compdat, comph = readdlm("resources/dabie/kern_dabie_comp.csv", ',', header=true)
+      seismicdat, seismich = readdlm("resources/dabie/kern_dabie_seismic.csv", ',', header=true);
+    elseif isfile("../resources/dabie/kern_dabie_comp.csv")
+      compdat, comph = readdlm("../resources/dabie/kern_dabie_comp.csv", ',', header=true)
+      seismicdat, seismich = readdlm("../resources/dabie/kern_dabie_seismic.csv", ',', header=true);
     else
       throw(Error("Cannot find file kern_dabie_comp.csv in data dir"))
     end 
@@ -239,16 +345,16 @@ function getAllSeismic(layer::Integer;
     elseif dataSrc == "Shen"
       # Get data 
       # Dims: longitude latitude depth. NaN-value = 9999.0
-      vp_us = Array{Float64}(ncread("data/US.2016.nc", "vp")) .|> x -> x==9999.0 ? NaN : x
-      vs_us = Array{Float64}(ncread("data/US.2016.nc", "vsv")) .|> x -> x==9999.0 ? NaN : x
-      rho_us = Array{Float64}(ncread("data/US.2016.nc", "rho")) .|> x -> x==9999.0 ? NaN : x
+      vp_us = Array{Float64}(ncread("resources/shen.US.2016.nc", "vp")) .|> x -> x==9999.0 ? NaN : x
+      vs_us = Array{Float64}(ncread("resources/shen.US.2016.nc", "vsv")) .|> x -> x==9999.0 ? NaN : x
+      rho_us = Array{Float64}(ncread("resources/shen.US.2016.nc", "rho")) .|> x -> x==9999.0 ? NaN : x
       rho_us = rho_us .* 1000 # unit conversion 
 
       # values corresponding to each axis of the above data 
-      depth_us = Array{Float64}(ncread("data/US.2016.nc", "depth"))
-      latitude_us = Array{Float64}(ncread("data/US.2016.nc", "latitude"))
+      depth_us = Array{Float64}(ncread("resources/shen.US.2016.nc", "depth"))
+      latitude_us = Array{Float64}(ncread("resources/shen.US.2016.nc", "latitude"))
       # values range, bizarely, from 235 to 295. This puts it in the right range but idk if correct. 
-      longitude_us = Array{Float64}(ncread("data/US.2016.nc", "longitude") .- 360)
+      longitude_us = Array{Float64}(ncread("resources/shen.US.2016.nc", "longitude") .- 360)
 
       # Get data as 1d array  
       lats = repeat(latitude_us, inner=length(longitude_us)) # repeat each lat for length of longs
@@ -295,11 +401,13 @@ function getAllSeismic(layer::Integer;
       geotherms = geotherms[good]
       crustbase=crustbase[good]
 
-    elseif (dataSrc == "Dabie") | (dataSrc == "DabieRG") ## Special case: "fake earth" where we know target comp. 
+    elseif (dataSrc == "Dabie") | (dataSrc == "DabieRG") | (dataSrc == "TestRG") ## Special case: "fake earth" where we know target comp. 
       if dataSrc == "Dabie"
         rho, vp, vpvs, geotherms = getTestSeismic(n, layer, dataUncertainty)
-      else
+      elseif dataSrc == "DabieRG"
         rho, vp, vpvs, geotherms = getTestSeismic(n, layer, dataUncertainty, ["D95-44", "HT4", "D95-11"])
+      else 
+        rho, vp, vpvs, geotherms = getPerplexTestSeismic(n, layer)
       end
       lats = fill(NaN, n)
       longs = fill(NaN, n)
