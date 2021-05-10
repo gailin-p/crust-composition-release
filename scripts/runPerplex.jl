@@ -60,11 +60,6 @@ exclude = ""
 dataset = parsed_args["perplex_dataset"]
 dpdz = 2900. * 9.8 / 1E5 * 1E3
 # TODO test diff between using / not using fluid 
-solutions = "O(HP)\nOpx(HP)\nOmph(GHP)\nGt(HP)\noAmph(DP)\nGlTrTsPg\nT\nB\nAnth\nChl(HP)"*
-		"\nBio(TCC)\nMica(CF)\nCtd(HP)\nIlHm(A)\nSp(HP)\nSapp(HP)\nSt(HP)\nfeldspar"*
-		"\nDo(HP)\n"
-npoints = 20
-fluid_endmembers = "abL\nanL\ndiL\nenL\nfaL\nfliq\nfoL\nkspL\nmliq\nqL\nsiL\nq8L\nfa8L\nfo8L\nsil8L\nh2oL\nh2o8L\n"
 
 # Perplex labels used by StatGeochem perplex interface 
 prop_labels = ["rho,kg/m3","vp,km/s","vp/vs"]
@@ -122,8 +117,8 @@ function worker()
 
 	        	# Run perplex
 	        	perplex_configure_geotherm(perplex, scratch, comp, PERPLEX_COMPOSITION_ELTS,
-	                P_range, 273.15, geotherm, dataset=dataset, solution_phases=solutions,
-	                excludes=fluid_endmembers, index=rank, npoints=npoints)
+	                P_range, 273.15, geotherm, dataset=dataset, solution_phases=SOLUTIONS,
+	                excludes=FLUID_ENDMEMBERS, index=rank, npoints=NPOINTS)
 	            point = perplex_query_point(perplex, scratch, formation_depth*dpdz, index=rank)
 
 	            try 

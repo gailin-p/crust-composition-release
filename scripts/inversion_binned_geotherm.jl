@@ -19,6 +19,9 @@ include("../src/vpRhoModel.jl")
 include("../src/linearModel.jl")
 include("../src/bin.jl")
 include("../src/config.jl")
+include("../src/rangeModel.jl")
+include("../src/seismic.jl")
+include("../src/parsePerplex.jl")
 
 s = ArgParseSettings()
 @add_arg_table! s begin
@@ -39,6 +42,10 @@ s = ArgParseSettings()
     	help = "How many resampled Crust1.0 samples to invert?"
     	arg_type = Int
     	default = nOriginal()
+    "--num_runs", "-r" 
+    	help = "How many times to run inversion?"
+    	arg_type = Int
+    	default = 1
     "--age_model"
     	help = "How to apply ages to samples to invert. Allowed: tc1, earthchem"
         arg_type = String
@@ -47,17 +54,17 @@ s = ArgParseSettings()
     "--data_source"
     	help = "Source for seismic data"
         arg_type = String
-        range_tester = x -> (x in ["Shen","Crust1.0", "Dabie", "DabieRG"])
+        range_tester = x -> (x in ["Shen","Crust1.0", "Dabie", "DabieRG", "TestRG"])
         default = "Crust1.0"
     "--data_source_uncertainty"
     	help = "Uncertainty as a fraction of std of this data set"
         arg_type = Float64
         range_tester = x -> (x >= 0)
-        default = 1.0
-    "--mean"  
-    	help = "for range model, use the mean of all matching compsoitions? if not, choose best."
-    	arg_type = Bool
-    	default = false
+        default = .1
+    # "--mean"  
+    # 	help = "for range model, use the mean of all matching compsoitions? if not, choose best."
+    # 	arg_type = Bool
+    # 	default = false
     "--crack"
     	help = "Mean of upper crust total porosity."
     	arg_type = Float64  
@@ -107,16 +114,16 @@ function run(parsed_args, outputPath)
 	### TODO: combine all these models, this is absurd -- most code is shared.
 	if parsed_args["model"] == "range"
 		models = makeModels(parsed_args["data_prefix"], modelType=RangeModel, crackFile=crackFile) # see inversionModel.jl. returns a ModelCollection 
-		if parsed_args["mean"]
-			setMean(models, parsed_args["mean"])
-		end 
+		# if parsed_args["mean"]
+		# 	setMean(models, parsed_args["mean"])
+		# end 
 	elseif parsed_args["model"] == "vprange"
 		models = makeModels(parsed_args["data_prefix"], modelType=VpModel, crackFile=crackFile)  
 	elseif parsed_args["model"] == "vprhorange"
 		models = makeModels(parsed_args["data_prefix"], modelType=VpRhoModel, crackFile=crackFile)  
-		if parsed_args["mean"]
-			setMean(models, parsed_args["mean"])
-		end 
+		# if parsed_args["mean"]
+		# 	setMean(models, parsed_args["mean"])
+		# end 
 	elseif parsed_args["model"] == "inversion"
 		models = makeModels(parsed_args["data_prefix"], modelType=InversionModel, crackFile=crackFile)
 	elseif parsed_args["model"] == "linear"
@@ -147,16 +154,26 @@ function run(parsed_args, outputPath)
 	sampleLongs = [upperLong, middleLong, lowerLong]
 
 	# Result data per geotherm bin 
-	results_upper, errors_upper = estimateComposition(models, UPPER, upperDat...)
-	results_middle, errors_middle  = estimateComposition(models, MIDDLE, middleDat...)
-	results_lower, errors_lower = estimateComposition(models, LOWER, lowerDat...)
-	results = [results_upper, results_middle, results_lower]
-	errors = [errors_upper, errors_middle, errors_lower]
+	results = []
+	errors = []
+	f_summary = outputPath*"runs_results.csv"
+	for i in 1:parsed_args["num_runs"]
+		results_upper, errors_upper = estimateComposition(models, UPPER, upperDat...)
+		results_middle, errors_middle  = estimateComposition(models, MIDDLE, middleDat...)
+		results_lower, errors_lower = estimateComposition(models, LOWER, lowerDat...)
+		results = [results_upper, results_middle, results_lower]
+		errors = [errors_upper, errors_middle, errors_lower]
 
-	SI_index = findfirst(isequal("SiO2"), PERPLEX_ELEMENTS)
-	println("Mean of upper results $(nanmean(results[1][:,SI_index]))")
-	println("Mean of middle results $(nanmean(results[2][:,SI_index]))")
-	println("Mean of lower results $(nanmean(results[3][:,SI_index]))")
+		SI_index = findfirst(isequal("SiO2"), PERPLEX_ELEMENTS)
+		CO_index = findfirst(isequal("CO2"), PERPLEX_ELEMENTS)
+		#println("Mean of upper results $(nanmean(results[1][:,SI_index:CO_index], dims=1))")
+		#println("Mean of middle results $(nanmean(results[2][:,SI_index:CO_index], dims=1))")
+		#println("Mean of lower results $(nanmean(results[3][:,SI_index:CO_index], dims=1))")
+
+		io = open(f_summary, "a") 
+		writedlm(io, [nanmean(results[1][:,SI_index]),nanmean(results[2][:,SI_index]),nanmean(results[3][:,SI_index]))  
+		close(io)
+	end
 
 	# Oversampling ratio 
 	n_original = length(crustDistribution.all_lats) # number of 1x1 grid cells w data at 

@@ -39,7 +39,7 @@ s = ArgParseSettings()
     "--data", "-d"
         help = "Path to EarthChem mat file"
         arg_type = String
-        default = "igncn1.mat"
+        default = "resources/igncn1.mat"
     "--dabie"
         help = "If provided, use Dabie data file as source composition when resampling"
         arg_type = String
@@ -160,7 +160,6 @@ else
     ign = ign_new 
 
     data = unelementify(ign, ign["elements"], floatout=true)
-    println(data)
 end
 
 # Set undefined elements for bulk elts to average, so they don't go NaN in resample. 
@@ -185,7 +184,9 @@ elseif (parsed_args["weight"] == "latlongage")
 
     k = invweight(ign["Latitude"], ign["Longitude"], ign["Age"])
     p = 1.0 ./ ((k .* median(5.0 ./ k)) .+ 1.0)
+
     resampled = bsresample(ign, parsed_args["num_samples"], RESAMPLED_ELEMENTS, p)
+    
 else
     resampled = bsresample(ign, parsed_args["num_samples"], RESAMPLED_ELEMENTS)
 end

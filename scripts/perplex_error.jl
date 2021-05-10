@@ -61,7 +61,7 @@ else # From brenhin
 end
 
 
-comp_compat, sample_names = convert_dabie("data/kern_dabie_comp.csv")
+comp_compat, sample_names = convert_dabie("resources/dabie/kern_dabie_comp.csv")
 
 # For seismic 
 st = SeismicTransform()
@@ -81,9 +81,9 @@ out = fill(NaN, (nsamples, length(out_header)))
 many_out = fill(NaN, (parsed_args["n"], nsamples, 13))
 
 # Use dabie data as comparison 
-dabie_vp, vp_header = readdlm("data/dabie_vp.csv", ',', header=true)
-dabie_vs, vs_header = readdlm("data/dabie_vs.csv", ',', header=true)
-dabie_rho, rho_header = readdlm("data/kern_dabie_seismic.csv", ',', header=true)
+dabie_vp, vp_header = readdlm("esources/dabie/dabie_vp.csv", ',', header=true)
+dabie_vs, vs_header = readdlm("esources/dabie/dabie_vs.csv", ',', header=true)
+dabie_rho, rho_header = readdlm("esources/dabie/kern_dabie_seismic.csv", ',', header=true)
 dabie_rho = dabie_rho[:,1:2] # first row is names, second row is density 
 
 for n in 1:parsed_args["n"]
