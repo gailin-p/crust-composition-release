@@ -12,13 +12,13 @@ using ProgressMeter: @showprogress
 using ArgParse
 using Plots; gr();
 
+include("../src/config.jl")
 include("../src/inversionModel.jl")
 include("../src/invertData.jl")
 include("../src/vpOnlyModel.jl")
 include("../src/vpRhoModel.jl")
 include("../src/linearModel.jl")
 include("../src/bin.jl")
-include("../src/config.jl")
 include("../src/rangeModel.jl")
 include("../src/seismic.jl")
 include("../src/parsePerplex.jl")
@@ -171,7 +171,7 @@ function run(parsed_args, outputPath)
 		#println("Mean of lower results $(nanmean(results[3][:,SI_index:CO_index], dims=1))")
 
 		io = open(f_summary, "a") 
-		writedlm(io, [nanmean(results[1][:,SI_index]),nanmean(results[2][:,SI_index]),nanmean(results[3][:,SI_index]))  
+		writedlm(io, [nanmean(results[1][:,SI_index]),nanmean(results[2][:,SI_index]),nanmean(results[3][:,SI_index])])  
 		close(io)
 	end
 

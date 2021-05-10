@@ -17,7 +17,7 @@ using Random
 using ProgressMeter: @showprogress
 
 # one std relative error. If running from jupyter notebook, need relative path 
-uncertainty_dat = IGN_FILE["err2srel"]
+uncertainty_dat = matread(IGN_FILE)["err2srel"]
 
 # Now using std as error, see getAllSeismic
 # relerr_rho = uncertainty_dat["Rho"]/2

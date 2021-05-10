@@ -16,6 +16,8 @@ using MAT
 using Statistics
 using Random
 
+include("config.jl")
+
 # For resampling 
 #  If running from jupyter notebook, need relative path 
 uncertainty_dat = matread(IGN_FILE)["err2srel"]

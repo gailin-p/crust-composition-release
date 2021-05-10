@@ -26,9 +26,9 @@ using Logging
 using Statistics
 using Random
 using ProgressMeter: @showprogress
-include("../src/crustDistribution.jl")
 include("../src/config.jl") # constants defined here 
 include("../src/utilities.jl")
+include("../src/crustDistribution.jl")
 
 s = ArgParseSettings()
 @add_arg_table! s begin
