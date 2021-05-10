@@ -1,0 +1,41 @@
+LITHO1.0 v1
+
+Reference:
+Pasyanos, M.E., T.G. Masters, G. Laske, and Z. Ma (2014). LITHO1.0: An updated crust and lithospheric model of the Earth, J. Geophys. Res., DOI: 10.1002/2013JB010626.
+
+1. After uncompressing and un-tarring the tar file, you should have this README file and a directory LITHO1.0 in
+   your current directory, e.g. /Users/myuser/work. Change directory (cd) to "LITHO1.0". There are two subdirectories 
+   (progs, litho_model).  The programs are in progs, and the model files reside in litho_model.
+2. Within LITHO1.0, you may elect to make a new directory called bin, if you do not already have a directory called bin
+   somewhere.
+3. Change directory to "progs". This is the location of the source code.
+   Edit the Makefile to point to full paths as follows
+   - set BIN to the path that the executable to be made shall reside (either the new bin that you just made,
+     e.g. /Users/myuser/work/LITHO1.0/bin or your general bin, e.g. /Users/myuser/bin
+   - set CPP to your c++ compiler
+   - set FLAGS to the path for the model file, e.g. /Users/myuser/work/LITHO1.0/litho_model
+4. type "make access_litho"
+5. Go back one level up and Try running "bin/access_litho".  You should get the following results.
+
+% access_litho -h
+access_litho -p lat lon [ -d depth] [-l level] [-e] [-h]
+  -h help 
+  -p lat lon (runs in profile mode)
+  -d depth (runs in point mode)
+  -l level 
+  
+% access_litho -p 12. 34.
+  60781.  3300.00  7874.65  4279.70    0.00   70.00  7874.65  4279.70 1.00000 ASTHENO-TOP
+  60781.  3300.00  8035.35  4578.55    0.00  200.00  8035.35  4578.55 1.00000 LID-BOTTOM
+  43521.  3300.00  8035.35  4578.55    0.00  200.00  8035.35  4578.55 1.00000 LID-TOP
+  43521.  3034.12  7180.76  4096.07    0.00  600.00  7180.76  4096.07 1.00000 CRUST3-BOTTOM
+  29011.  3034.12  7180.76  4096.07    0.00  600.00  7180.76  4096.07 1.00000 CRUST3-TOP
+  29011.  2852.08  6573.94  3782.54    0.00  600.00  6573.94  3782.54 1.00000 CRUST2-BOTTOM
+  14490.  2852.08  6573.94  3782.54    0.00  600.00  6573.94  3782.54 1.00000 CRUST2-TOP
+  14490.  2750.94  6270.52  3580.27    0.00  600.00  6270.52  3580.27 1.00000 CRUST1-BOTTOM
+   -471.  2750.94  6270.52  3580.27    0.00  600.00  6270.52  3580.27 1.00000 CRUST1-TOP
+   -471.  2110.00  2500.00  1070.00    0.00  600.00  2500.00  1070.00 1.00000 SEDS1-BOTTOM
+   -479.  2110.00  2500.00  1070.00    0.00  600.00  2500.00  1070.00 1.00000 SEDS1-TOP
+
+The output is:
+depth(m) density(kg/m3) Vp(m/s) Vs(m/s) Qkappa Qmu Vp2(m/s) Vs2(m/s) eta layername
