@@ -47,7 +47,7 @@ for (l, file) in enumerate(files)
 	end 
 
 	if l%3 == 1
-		println(file)
+		#println(file)
 	end
 
 	(results, header) = readdlm(file, ',', header=true)
@@ -60,11 +60,11 @@ for (l, file) in enumerate(files)
 	good = good[:]
 	means = mean(results[good,si_index:co_index], dims=1)
 	sems = sem.(eachcol(results[good,si_index:co_index]))
-	println("For layer $layer, $(size(results,1) - sum(good)) test points have at least one NaN result value")
+	#println("For layer $layer, $(size(results,1) - sum(good)) test points have at least one NaN result value")
 
-	println("$layer")
-	println("$(header[si_index:co_index])")
-	println(join(round.(means, sigdigits=3), "\t"))
+	#println("$layer")
+	#println("$(header[si_index:co_index])")
+	#println(join(round.(means, sigdigits=3), "\t"))
 	#println(join(round.(sems, sigdigits=3), " , "))
 
 	si_means[l] = means[1]
@@ -93,8 +93,8 @@ if parsed_args["compare_rg"]
 end
 
 # Print [upper, middle lower] SiO2 and SEM 
-println("SiO2 mean and SEM for upper, middle, lower")
-println(join(round.(si_means, sigdigits=3), ", "))
-println(join(round.(si_sem, sigdigits=3), " , "))
+#println("SiO2 mean and SEM for upper, middle, lower")
+println(join(round.(si_means, sigdigits=10), ", "))
+#println(join(round.(si_sem, sigdigits=3), " , "))
 
 

@@ -34,7 +34,7 @@ function Kohistan()
 
 	## Remainder of SPC, normalized by geobarametric depth, minus the bit of the sarangar gabbro included in the lower crust 
 	middle_spc_comp = ((4.3- (middle-41))*52.52 + 3.0*51.09 + .8*57.95 + 2.3*50.83 + .4*72.01 + 1.1*49.61) / ((4.3- (middle-41)) + 3.0 + .8 + 2.3 + .4 + 1.1)
-	pluton_comp = (.07*53.64 + .67*64.49 + .09*73.37 ) / (.07 + .67 + .09)
+	pluton_comp = ((7/100)*53.64 + .67*64.49 + (9/100)*73.37 ) / (7/100 + .67 + (9/100))
 	## SPC comp from 30 km (bottom of Gilgit complex, from table 1) to bottom of middle + pluton from upper boundary to 30km depth
 	middle_comp = ((middle-30)*middle_spc_comp + (30-upper)*pluton_comp) / ((middle-30)+(30-upper))
 

@@ -12,10 +12,10 @@ set -e # Fail if any command fails
 rm -rf data/test
 
 # Resample composition files 
-julia scripts/resampleEarthChem.jl -o test -n 5000 -w latlongage #--exhume true -b 2 
+julia scripts/resampleEarthChem.jl -o test -n 100 -w latlongage #--exhume true -b 2 
 
 # Perplex for each geotherm bin 
-mpiexec -np 3 --oversubscribe julia scripts/runPerplex.jl -d test -b 1 --scratch "/Users/gailin/dartmouth/crustal_structure/perplexed_pasta/scratch" --perplex "/Users/gailin/resources/perplex-stable/" 
+mpiexec -np 3 --oversubscribe julia scripts/runPerplex.jl -d test -b 1 --scratch "/Users/gailin/dartmouth/crustal_structure/perplexed_pasta/scratch" --perplex "/Users/gailin/resources/perplex-stable/" --perplex_dataset hpha11ver.dat 
 #mpiexec -np 3 --oversubscribe julia scripts/runPerplex.jl -d test -b 2 --scratch "/Users/gailin/dartmouth/crustal_structure/perplexed_pasta/scratch" --perplex "/Users/gailin/resources/perplex-stable/" 
 
 # Invert 

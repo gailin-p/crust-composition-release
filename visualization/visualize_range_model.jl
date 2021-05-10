@@ -9,6 +9,7 @@ include("../src/inversionModel.jl")
 include("../src/invertData.jl")
 include("../src/config.jl")
 include("../src/crustDistribution.jl")
+include("../src/rangeModel.jl")
 
 s = ArgParseSettings()
 @add_arg_table s begin
