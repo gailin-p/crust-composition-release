@@ -156,7 +156,7 @@ end
 Fake earth builder, using Perple_X modeling to model earth 
 
 """
-function getPerplexTestSeismic(n, layer; nsamples=100, target=[66.6, 63.5, 53.4])
+function getPerplexTestSeismic(n, layer; nsamples=100, target=[66.6, 63.5, 53.4], bonus_info=false)
   # Load pre-resampled ign data 
   layer = layer - 5
   f = isfile("resources/bsr_ignmajors_1.csv") ? "resources/bsr_ignmajors_1.csv" : "../resources/bsr_ignmajors_1.csv"
@@ -203,35 +203,41 @@ function getPerplexTestSeismic(n, layer; nsamples=100, target=[66.6, 63.5, 53.4]
   @showprogress "Building fake earth" for sample in 1:nsamples 
     ####### Shared 
     dtdz = 550.0/nanmean(geotherm) # sampling geotherm 
-    formation_depth, formation_dtdz = crustDistribution.getFormationParams(nanmean(depths), dtdz)
+    for t in 1:10 # try up to 10 formation depths and pressures 
+      formation_depth, formation_dtdz = crustDistribution.getFormationParams(nanmean(depths), dtdz)
 
-    P_range = [formation_depth*(9/10)*dpdz, formation_depth*(11/10)*dpdz] # we only need a small range around formation t, p
-    # Run perplex
-    perplex_configure_geotherm(DEFAULT_PERPLEX, DEFAULT_SCRATCH, comps[sample,:], PERPLEX_COMPOSITION_ELTS,
-                  P_range, 273.15, formation_dtdz/dpdz, dataset=DEFAULT_DATASET, solution_phases=SOLUTIONS,
-                  excludes=FLUID_ENDMEMBERS, index=1, npoints=NPOINTS)
-    point = perplex_query_point(DEFAULT_PERPLEX, DEFAULT_SCRATCH, formation_depth*dpdz, index=1)
-    try 
-      properties = get_system_props(point)
-      endmembers = parse_perplex_point(point)
+      P_range = [formation_depth*(9/10)*dpdz, formation_depth*(11/10)*dpdz] # we only need a small range around formation t, p
+      # Run perplex
+      perplex_configure_geotherm(DEFAULT_PERPLEX, DEFAULT_SCRATCH, comps[sample,:], PERPLEX_COMPOSITION_ELTS,
+                    P_range, 273.15, formation_dtdz/dpdz, dataset=DEFAULT_DATASET, solution_phases=SOLUTIONS,
+                    excludes=FLUID_ENDMEMBERS, index=1, npoints=NPOINTS)
+      point = perplex_query_point(DEFAULT_PERPLEX, DEFAULT_SCRATCH, formation_depth*dpdz, index=1)
+      try 
+        properties = get_system_props(point)
+        endmembers = parse_perplex_point(point)
 
-      for (j, loc) in enumerate(assignment)
-        if assignment[loc] == sample 
-          P = dpdz*depths[j] + 280 # add surface pressure (bar)
-          T = geotherm[j]*depths[j] + 273.15 # add surface temp (K)
-          rho[j], vp[j], vs[j] = get_seismic(T, P, properties, endmembers, st)
-        end 
-      end
-      push!(succeeded,comps[sample,1])
-    catch e
-      #if (isa(e, ParsePerplexError) | isa(e, SeismicError))
+        for (j, loc) in enumerate(assignment)
+          if assignment[loc] == sample 
+            P = dpdz*depths[j] + 280 # add surface pressure (bar)
+            T = geotherm[j]*depths[j] + 273.15 # add surface temp (K)
+            rho[j], vp[j], vs[j] = get_seismic(T, P, properties, endmembers, st)
+          end 
+        end
+        push!(succeeded,comps[sample,1])
+        break # successful 
+      catch e
+        #if (isa(e, ParsePerplexError) | isa(e, SeismicError))
         println("\r\n\r\nCannot process sample due to \r\n $e")
-        println("failed sample had $(comps[sample,1]) % sio2")
-        push!(failed,comps[sample,1])
-      #else 
-      # throw(e)
-      #end 
-    end 
+        println("failed sample had $(comps[sample,1]) % sio2, try $t")
+        if t == 10 
+          push!(failed,comps[sample,1])
+        end
+        continue 
+        #else 
+        # throw(e)
+        #end 
+      end 
+    end
   end
 
   println("layer $layer has $(length(failed)) failed samples, mean sio2 $(mean(failed))")
@@ -241,18 +247,22 @@ function getPerplexTestSeismic(n, layer; nsamples=100, target=[66.6, 63.5, 53.4]
   vs[isnan.(vs)] .= nanmean(vs)
 
   # Cracking in upper crust 
-  # if layer == 1
-  #   liquid_weights = [.5, .5, 0, 0] # fraction dry, water, magma, no cracking 
-  #   crack_porosity = .007 * .05 # total porosity * fraction crack 
-  #   pore_porosity = .007 * (1-.05) # total porosity * fraction pore 
+  if layer == 1
+    liquid_weights = [.5, .5, 0, 0] # fraction dry, water, magma, no cracking 
+    crack_porosity = .007 * .05 # total porosity * fraction crack 
+    pore_porosity = .007 * (1-.05) # total porosity * fraction pore 
     
-  #   profiles = Array{Crack,1}([random_cracking(crack_porosity, pore_porosity, liquid_weights) for i in 1:n])
-  #   vpvs = vp ./ vs
-  #   rho, vp, vpvs = apply_cracking!(rho, vp, vpvs, profiles)
-  #   return rho, vp, vpvs, geotherm 
-  # end
+    profiles = Array{Crack,1}([random_cracking(crack_porosity, pore_porosity, liquid_weights) for i in 1:n])
+    vpvs = vp ./ vs
+    rho, vp, vpvs = apply_cracking!(rho, vp, vpvs, profiles)
+    return rho, vp, vpvs, geotherm 
+  end
 
-  return (rho, vp, vp ./ vs, geotherm), s
+  if bonus_info
+    return (rho, vp, vp ./ vs, geotherm), (s, failed, succeeded)
+  else 
+    return (rho, vp, vp ./ vs, geotherm)
+  end 
 end 
 
 
@@ -406,7 +416,7 @@ function getAllSeismic(layer::Integer;
         rho, vp, vpvs, geotherms = getTestSeismic(n, layer, dataUncertainty)
       elseif dataSrc == "DabieRG"
         rho, vp, vpvs, geotherms = getTestSeismic(n, layer, dataUncertainty, ["D95-44", "HT4", "D95-11"])
-      else 
+      else  # testRG
         rho, vp, vpvs, geotherms = getPerplexTestSeismic(n, layer)
       end
       lats = fill(NaN, n)

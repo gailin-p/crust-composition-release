@@ -46,6 +46,8 @@ end
 """
 	A version of range model using only vp and rho 
 	Assumes input `seismic` has cols index, rho, vp, vpvs 
+
+TODO need to make this a type so has an estimateComposition function specific to it 
 """
 function VpVsRhoRangeModel(ign, seismic)
 	return RangeModel(ign, hcat(seismic[:,1], seismic[:,3]))

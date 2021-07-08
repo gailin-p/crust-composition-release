@@ -35,8 +35,12 @@ if length(parsed_args["titles"]) < (length(parsed_args["compare_to"]) + 1)
 	append!(parsed_args["titles"], fill("no title provided", (length(parsed_args["compare_to"]) + 1)-length(parsed_args["titles"])))
 end 
 
+build_args = readdlm("$(parsed_args["data_path"])/inversion_options.csv", ',', header=false)
+N = build_args[findfirst(isequal("num_invert"), build_args[:,1]),2]
+M = build_args[findfirst(isequal("num_runs"), build_args[:,1]),2]
+
 # By age! 
-function find_age_aves(files)
+function find_age_aves(files, N, M)
 	age_model = EarthChemAge(10, 3) # Default in inversion_binned_geotherm 
 	ages = ageBins(age_model) 
 
@@ -52,23 +56,34 @@ function find_age_aves(files)
 
 		si_index = findfirst(isequal("SiO2"), header) # result 
 		age_index = findfirst(isequal("sample_age"), header) # Age 
-		good = ((.~isnan.(result[:,si_index])) .& (.~isnan.(result[:,age_index])))
+		#good = ((.~isnan.(result[:,si_index])) .& (.~isnan.(result[:,age_index])))
+
+		age_median = []
+		age_low = []
+		age_high = [] # 95 percentile
 
 		# Oversampling ratio -- IS THIS RIGHT???
-		n_original = length(crustDistribution.all_lats) # number of 1x1 grid cells w data 
-		n_resampled = size(result, 1) 
+		#n_original = length(crustDistribution.all_lats) # number of 1x1 grid cells w data 
+		#n_resampled = size(result, 1) 
 
 		for (i, age) in enumerate(ages[1:end-1])
-			test = ((result[:,age_index] .>= age) .& (result[:,age_index] .< ages[i+1]) .& good)
-			age_results[l,i] = mean(result[test,si_index])
-			age_1std[l,i] = sem(result[test,si_index]) * sqrt(n_original)/sqrt(n_resampled)
+			mc_avgs = fill(NaN, M)
+			for m in 1:M
+				# only this run 
+				istart = (m-1)*N + 1
+				iend = m*N
+				dat = result[istart:iend]
+
+				test = ((dat[:,age_index] .>= age) .& (dat[:,age_index] .< ages[i+1]) .& good)
+				age_results[l,i] = nanmean(result[test,si_index])
+				
 		end 
 	end
 	return ages, age_results, age_1std
 end 
 
 files = ["$(parsed_args["data_path"])/results-$layer.csv" for layer in LAYER_NAMES]
-ages, age_results, age_1std = find_age_aves(files)
+ages, age_results, age_1std = find_age_aves(files, N, M)
 
 
 p1 = plot(legend=false, ylabel="% SiO2", ylims=(52, 70), title="Upper", titlefontsize=11) 

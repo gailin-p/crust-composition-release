@@ -373,12 +373,17 @@ end
 alpha = 1
 """ 
 function sphere_properties(porosity, nu0)
-    nu = find_zero(build_nu_solver(porosity, nu0), nu0)
-    term1 = Complex((1-5*nu)/(1-5*nu0))
-    term2 = Complex((1-2*nu)/(1-2*nu0))
-    term3 = Complex((1+nu)/(1+nu0))
-    KK0 = real(term1^(5/3)) * real(term2^(-1)) * real(term3^(-2/3))
-    return nu, KK0
+	try
+    	nu = find_zero(build_nu_solver(porosity, nu0), nu0)
+    	term1 = Complex((1-5*nu)/(1-5*nu0))
+	    term2 = Complex((1-2*nu)/(1-2*nu0))
+	    term3 = Complex((1+nu)/(1+nu0))
+	    KK0 = real(term1^(5/3)) * real(term2^(-1)) * real(term3^(-2/3))
+	    return nu, KK0
+    catch e 
+    	println("Failed with spherical pore, using needle")
+    	return needle_properties(porosity, nu0)
+    end 
 end
 
 

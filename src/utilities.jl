@@ -111,9 +111,9 @@ function areaAverage(latitude::Array{Float64,1}, longitude::Array{Float64,1}, va
 		a = get!(m, (floor(latitude[i]), floor(longitude[i])), [])
 		append!(a, vals[i])
 	end 
-	for k in keys(m)
-		m[k] = [nanmean(Array{Float64}(m[k]))]
-	end 
+	# for k in keys(m)
+	# 	m[k] = [nanmean(Array{Float64}(m[k]))]
+	# end 
 
 	lats = [k[1] for k in keys(m)]
 	longs = [k[2] for k in keys(m)]

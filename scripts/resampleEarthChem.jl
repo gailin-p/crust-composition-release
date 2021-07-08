@@ -51,7 +51,7 @@ s = ArgParseSettings()
     "--weight", "-w"
         help = "Weight during resampling? Allowed: silica, latlongage"
         arg_type = String
-        range_tester = x -> (x in ["","silica","latlongage"])
+        range_tester = x -> (x in ["","silica","latlongage", "RG"])
         default = ""
     "--bin_geotherms", "-b"
         help = "Bin geotherms? (1 for no binning.) Provides b output files, one for each bin"
@@ -169,15 +169,17 @@ end
 
 # Resample
 if (parsed_args["weight"] == "silica") # weight according to silica content
-    throw(AssertionError("Hey, we decided weighting by silica is bad because we want representative 
-        proportions of compositions!"))
+    #throw(AssertionError("Hey, we decided weighting by silica is bad because we want representative 
+    #    proportions of compositions!"))
 
-    k = invweight(ign["SiO2"], (nanmaximum(ign["SiO2"])-nanminimum(ign["SiO2"]))/100)
+    k = invweight(ign["SiO2"],2) # 2 is resampling scale #, (nanmaximum(ign["SiO2"])-nanminimum(ign["SiO2"]))/100)                                                               
+#println("Am i nan? $(sum(k))")                                                                                                                                                  
 
-    # Probability of keeping a given data point when sampling:
-    # We want to select roughly one-fith of the full dataset in each re-sample,
-    # which means an average resampling probability <p> of about 0.2
+    # Probability of keeping a given data point when sampling:                                                                                                                   
+    # We want to select roughly one-fith of the full dataset in each re-sample,                                                                                                  
+    # which means an average resampling probability <p> of about 0.2                                                                                                             
     p = 1.0 ./ ((k .* median(5.0 ./ k)) .+ 1.0)
+#println("Am i nan? $(sum(p))")                                                                                                                                                  
     resampled = bsresample(ign, parsed_args["num_samples"], RESAMPLED_ELEMENTS, p)
 elseif (parsed_args["weight"] == "latlongage")
     println("Weighting by lat, long, age.")
@@ -186,7 +188,8 @@ elseif (parsed_args["weight"] == "latlongage")
     p = 1.0 ./ ((k .* median(5.0 ./ k)) .+ 1.0)
 
     resampled = bsresample(ign, parsed_args["num_samples"], RESAMPLED_ELEMENTS, p)
-    
+#elseif (parsed_args["weight"] == "RG")
+
 else
     resampled = bsresample(ign, parsed_args["num_samples"], RESAMPLED_ELEMENTS)
 end
