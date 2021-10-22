@@ -15,7 +15,6 @@ Use:
 Run from base folder (runPerplexBatchVp)
 Places resampled file at data/<data_prefix>/ignmajors.csv
 
-Run using MPI like:
 """
 
 using ArgParse
@@ -26,7 +25,7 @@ using Logging
 using Statistics
 using Random
 using ProgressMeter: @showprogress
-include("../src/config.jl") # constants defined here 
+include("../src/config.jl") # constants defined here
 include("../src/utilities.jl")
 include("../src/crustDistribution.jl")
 
@@ -43,7 +42,11 @@ s = ArgParseSettings()
     "--dabie"
         help = "If provided, use Dabie data file as source composition when resampling"
         arg_type = String
-        default = "" 
+        default = ""
+    "--huang"
+        help = "If provided, use Huang data file as source composition when resampling"
+        arg_type = String
+        default = ""
     "--num_samples", "-n"
         help = "How many samples to produce"
         arg_type = Int
@@ -60,7 +63,7 @@ s = ArgParseSettings()
     "--exhume"
         help = "Apply random exhumation in the upper crust?"
         arg_type = Bool
-        default = false 
+        default = false
 end
 parsed_args = parse_args(ARGS, s)
 dir = parsed_args["data_prefix"]
@@ -71,7 +74,7 @@ writeOptions("data/"*dir*"/resampleEarthChem_options.csv", parsed_args)
 ign = matread(parsed_args["data"])
 
 
-if parsed_args["dabie"] == ""
+if (parsed_args["dabie"] == "") & (parsed_args["huang"] == "")
     # Calculate H2O_Total if not present or all NaN
     if (! ( "H2O_Total" in keys(ign))) || (sum(isnan.(ign["H2O_Total"])) == length(ign["H2O_Total"]))
         println("Calculating H2O_Total from H2O, H2O_Plus, H2O_Minus, and Loi")
@@ -79,28 +82,28 @@ if parsed_args["dabie"] == ""
         println(size(ign["H2O"]))
         println(size(ign["H2O_Total"]))
 
-        # If H2O exists, use that 
+        # If H2O exists, use that
         h2Ogood = .~(isnan.(ign["H2O"]))
         println("Using $(sum(h2Ogood)) H2O values")
         ign["H2O_Total"][h2Ogood] .= ign["H2O"][h2Ogood]
 
-        # Otherwise, if H2O_Plus and H2O_Minus, use sum of those 
+        # Otherwise, if H2O_Plus and H2O_Minus, use sum of those
         plusminus = (.~h2Ogood) .& (.~(isnan.(ign["H2O_Plus"]))) .& (.~(isnan.(ign["H2O_Minus"])))
         println("Using $(sum(plusminus)) H2O_Plus and H2O_Minus values")
         ign["H2O_Total"][plusminus] .= ign["H2O_Minus"][plusminus] .+ ign["H2O_Plus"][plusminus]
 
-        # Otherwise, partition Loi into CO2 and H2O based on ratio in rest of data set 
+        # Otherwise, partition Loi into CO2 and H2O based on ratio in rest of data set
         ratio = nanmean(ign["H2O"][h2Ogood] ./ (ign["CO2"][h2Ogood] + ign["H2O"][h2Ogood])) # h2O out of total volatiles
         loi = (.~plusminus) .& (.~h2Ogood) .& (.~(isnan.(ign["Loi"])))
         println("Using $(sum(loi)) Loi values, partitioning $(ratio) of volatiles into H2O")
-        ign["H2O_Total"][loi] = ign["Loi"][loi] .* ratio 
+        ign["H2O_Total"][loi] = ign["Loi"][loi] .* ratio
         ign["CO2"][loi] .= ign["Loi"][loi] .* (1-ratio)
 
         println("$(sum(.~(isnan.(ign["H2O_Total"])))) not-nan H2O_Total values from $(sum(h2Ogood) + sum(plusminus) + sum(loi)) other data vals")
-    end 
+    end
 
     # List of elements we want to resample export (primarily element oxides)
-    # Lat, long and age are unused, but export for visualization or reference. 
+    # Lat, long and age are unused, but export for visualization or reference.
 
     # Set uncertainties
     for e in RESAMPLED_ELEMENTS
@@ -125,18 +128,42 @@ if parsed_args["dabie"] == ""
 
     # Reject samples with suspicious anhydrous normalizations
     anhydrousnorm = fill(false, length(ign[RESAMPLED_ELEMENTS[1]]))
-    for i in 1:length(ign[RESAMPLED_ELEMENTS[1]]) # for every sample 
-        elts = [ign[elt][i] for elt in COMPOSITION_ELEMENTS[1:8]] # sum of percents for every sample 
+    for i in 1:length(ign[RESAMPLED_ELEMENTS[1]]) # for every sample
+        elts = [ign[elt][i] for elt in COMPOSITION_ELEMENTS[1:8]] # sum of percents for every sample
         total = sum(elts)
         anhydrousnorm[i] = (total < 101) & (total > 90) # is this sample reasonable? (all NaNs will return false)
-    end 
+    end
     println("Throwing away $(length(ign[RESAMPLED_ELEMENTS[1]]) - sum(anhydrousnorm)) samples because of suspicious anhydrous normalizations or all NaN values")
 
-    for elt in RESAMPLED_ELEMENTS 
+    for elt in RESAMPLED_ELEMENTS
         ign[elt] = ign[elt][anhydrousnorm]
         ign["err"][elt] = ign["err"][elt][anhydrousnorm]
-    end 
-else
+    end
+elseif parsed_args["huang"] != "" # Huang
+    dat, h = readdlm(parsed_args["huang"], ',', header=true)
+    n = size(dat, 1)
+    dat[dat .== -1] .= NaN
+    # Standard format
+    ign_new = Dict{String,Any}()
+    for re in RESAMPLED_ELEMENTS # standard list of elts
+        ign_new[re] = fill(NaN, n)
+    end
+    for (i, ce) in enumerate(h) # elts we have
+        ign_new[ce] = dat[:,i]
+    end
+
+    ign_new["elements"] = RESAMPLED_ELEMENTS
+
+    # Set uncertainties
+    ign_new["err"] = Dict()
+    for e in RESAMPLED_ELEMENTS
+        ign_new["err"][e] = ign_new[e] .* (ign["err2srel"][e] / 2) # default
+        ign_new["err"][e][isnan.(ign_new[e])] .= nanstd(ign_new[e]) # missing data gets std, which is a much larger uncertainty
+    end
+
+    # make this the usual ign
+    ign = ign_new
+else # Dabie
     comp_compat, _ = convert_dabie(parsed_args["dabie"])
     n = size(comp_compat)[1]
     ign_new = Dict{String,Any}()
@@ -156,30 +183,30 @@ else
         ign_new["err"][e][isnan.(ign_new[e])] .= nanstd(ign_new[e]) # missing data gets std, which is a much larger uncertainty
     end
 
-    # make this the usual ign 
-    ign = ign_new 
+    # make this the usual ign
+    ign = ign_new
 
     data = unelementify(ign, ign["elements"], floatout=true)
 end
 
-# Set undefined elements for bulk elts to average, so they don't go NaN in resample. 
+# Set undefined elements for bulk elts to average, so they don't go NaN in resample.
 for e in COMPOSITION_ELEMENTS
     ign[e][isnan.(ign[e])] .= nanmean(ign[e])
 end
 
 # Resample
 if (parsed_args["weight"] == "silica") # weight according to silica content
-    #throw(AssertionError("Hey, we decided weighting by silica is bad because we want representative 
+    #throw(AssertionError("Hey, we decided weighting by silica is bad because we want representative
     #    proportions of compositions!"))
 
-    k = invweight(ign["SiO2"],2) # 2 is resampling scale #, (nanmaximum(ign["SiO2"])-nanminimum(ign["SiO2"]))/100)                                                               
-#println("Am i nan? $(sum(k))")                                                                                                                                                  
+    k = invweight(ign["SiO2"],2) # 2 is resampling scale #, (nanmaximum(ign["SiO2"])-nanminimum(ign["SiO2"]))/100)
+#println("Am i nan? $(sum(k))")
 
-    # Probability of keeping a given data point when sampling:                                                                                                                   
-    # We want to select roughly one-fith of the full dataset in each re-sample,                                                                                                  
-    # which means an average resampling probability <p> of about 0.2                                                                                                             
+    # Probability of keeping a given data point when sampling:
+    # We want to select roughly one-fith of the full dataset in each re-sample,
+    # which means an average resampling probability <p> of about 0.2
     p = 1.0 ./ ((k .* median(5.0 ./ k)) .+ 1.0)
-#println("Am i nan? $(sum(p))")                                                                                                                                                  
+#println("Am i nan? $(sum(p))")
     resampled = bsresample(ign, parsed_args["num_samples"], RESAMPLED_ELEMENTS, p)
 elseif (parsed_args["weight"] == "latlongage")
     println("Weighting by lat, long, age.")
@@ -208,41 +235,36 @@ end
 # Fix any resampled below 0 (only for elements, not for lat/long/age)
 outtable[:,2:length(COMPOSITION_ELEMENTS)+1] = map(x->max(0.0, x), outtable[:,2:length(COMPOSITION_ELEMENTS)+1])
 
-# Renormalize because we'll use these as % comp later 
+# Renormalize because we'll use these as % comp later
 normalizeComp!(view(outtable, :, 2:length(COMPOSITION_ELEMENTS)+1))
 
 outtable[:,1] = Array(1:size(outtable,1)) # Set indices
 
-# Apply geotherms. 
+# Apply geotherms.
 bins = parsed_args["bin_geotherms"]
 bin_boundaries = crustDistribution.binBoundaries(bins)
 
 for (i, bin_bottom) in enumerate(bin_boundaries[1:end-1])
     bin_top = bin_boundaries[i+1]
     println("Resampling bin $i from $bin_bottom to $bin_top...")
-    outtable[:,length(RESAMPLED_ELEMENTS)+2:end-1] = 
+    outtable[:,length(RESAMPLED_ELEMENTS)+2:end-1] =
         crustDistribution.getCrustParams(bin_bottom, bin_top, size(outtable,1), uncertain=true)
 
     if parsed_args["exhume"]
-        outtable[:,findfirst(isequal("exhumed"), PERPLEX_ELEMENTS)] = 
-            rand(1:.1:10, size(outtable,1)) # km 
+        outtable[:,findfirst(isequal("exhumed"), PERPLEX_ELEMENTS)] =
+            rand(1:.1:10, size(outtable,1)) # km
     else
-        outtable[:,findfirst(isequal("exhumed"), PERPLEX_ELEMENTS)] = 
-            fill(0, size(outtable,1)) # km 
-    end 
+        outtable[:,findfirst(isequal("exhumed"), PERPLEX_ELEMENTS)] =
+            fill(0, size(outtable,1)) # km
+    end
 
 
 
-    # Write this outtable before doing the next 
+    # Write this outtable before doing the next
     dir = parsed_args["data_prefix"]
     mkpath("data/"*dir) # make if does not exist
 
     path = "data/"*dir*"/bsr_ignmajors_$(i).csv"
     header = reshape(PERPLEX_ELEMENTS, (1, length(PERPLEX_ELEMENTS)))
     writedlm(path, vcat(header, round.(outtable, digits=5)), ",")
-end 
-
-
-
-
-
+end

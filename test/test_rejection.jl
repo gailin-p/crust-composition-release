@@ -1,10 +1,10 @@
-using Test 
+using Test
 
 include("../src/inversionModel.jl")
 include("../src/rejectionModel.jl")
 include("../src/config.jl")
 
-@testset "Range model" begin 
+@testset "Rejection model" begin
 
 n = 2
 
@@ -16,14 +16,14 @@ seismic[:,1] = 1:n
 
 seismic[:,2] = [2000,1500] # 2 test populations: one within 10% of 1500, one within 10% of 2000
 seismic[:,3] = [2, 1.5]
-seismic[:,4] = [2, 1.5]  # 3 should be excluded from population 2 based on this value 
+seismic[:,4] = [2, 1.5]  # 3 should be excluded from population 2 based on this value
 
 
 model = RejectionModel(ign, seismic)
 
 
-means, errs = estimateComposition(model, [2000., 1430., 500], 
-	[2., 1.6, .5], 
+means, errs = estimateComposition(model, [2000., 1430., 500],
+	[2., 1.6, .5],
 	[2., 1.52, .5])
 
 @test size(means) == (3,length(PERPLEX_ELEMENTS))
@@ -31,4 +31,4 @@ means, errs = estimateComposition(model, [2000., 1430., 500],
 
 println(means)
 
-end 
+end
