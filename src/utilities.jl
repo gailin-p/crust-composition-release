@@ -91,8 +91,9 @@ end
 For values at each location in latitide/longitude, find average value per lat/long grid square.
 Return lat, long, ave value for each square, with val=NaN for squares with no values.
 size combines that size^2 lat/long squares into each returned square.
+If var, also return variance
 """
-function areaAverage(latitude::Array{Float64,1}, longitude::Array{Float64,1}, vals::Array{Float64,1}; size::Int=1)
+function areaAverage(latitude::Array{Float64,1}, longitude::Array{Float64,1}, vals::Array{Float64,1}; size::Int=1, return_std::Bool=false)
 	good = .!(isnan.(latitude) .| isnan.(longitude) .| isnan.(vals))
 
 	m = Dict{Tuple, Array}() # map from lat/long to list of values
@@ -115,13 +116,21 @@ function areaAverage(latitude::Array{Float64,1}, longitude::Array{Float64,1}, va
 	# 	m[k] = [nanmean(Array{Float64}(m[k]))]
 	# end
 
-	lats = [k[1] for k in keys(m)]
-	longs = [k[2] for k in keys(m)]
-	val = [mean(v) for v in values(m)]
+	ks = keys(m)
+	vs = [m[k] for k in ks] # make sure no reordering
+	lats = [k[1] for k in ks]
+	longs = [k[2] for k in ks]
+	val = [mean(v) for v in vs]
+	if return_std
+		variance = [std(v) for v in vs]
+	end
 
 	#good = .!(isnan.(lats) .| isnan.(longs) .| isnan.(val))
 
 	#return lats[good].*size, longs[good].*size, val[good]
+	if return_std
+		return lats.*size, longs.*size, val, variance
+	end
 	return lats.*size, longs.*size, val
 end
 

@@ -108,6 +108,7 @@ mutable struct CrackProfile <: Crack
 	crack_porosity::Number
 	liquid::String
 	shape::String
+	alteration_percent::Number # fraction of clay alteration minerals
 end
 
 struct NoCrack <: Crack end
@@ -117,11 +118,11 @@ struct NoCrack <: Crack end
 Return base type fields of a crack profile for saving to a .csv
 """
 function props(profile::CrackProfile)
-	return [profile.fluid_density, profile.K_fluid, profile.porosity, profile.crack_porosity, profile.liquid, profile.shape]
+	return [profile.fluid_density, profile.K_fluid, profile.porosity, profile.crack_porosity, profile.liquid, profile.shape, profile.alteration_percent]
 end
 
 function props(profile::NoCrack)
-	return [NaN, NaN, NaN, NaN, "none", "none"]
+	return [NaN, NaN, NaN, NaN, "none", "none", NaN]
 end
 
 """
@@ -134,7 +135,7 @@ Use needles
 """
 function CrackProfile(z)
 	porosity = kFromDepth(z)*10^4
-	return CrackProfile(needle_properties, 0, 0, .96*porosity, .04*porosity, "d", "needle")
+	return CrackProfile(needle_properties, 0, 0, .96*porosity, .04*porosity, "d", "needle", 0)
 end
 
 # Load data
@@ -155,6 +156,7 @@ relerr_water_rho = .2
 Return a CrackProfile for a random crack/fluid profile or no cracks.
 """
 function random_cracking(mean_crack_porosity::Number=.007, mean_pore_porosity::Number=.15,
+	mean_alteration_percent::Number=.01,
 	liquid_weights::Array{Float64, 1}=[.2, .2, .2, .4], # dry, water, magma, none
 	shape_weights::Array{Float64, 1}=[.5, .5]) # probability of sphere vs needle
 	# Dry, water or magma?
@@ -192,7 +194,11 @@ function random_cracking(mean_crack_porosity::Number=.007, mean_pore_porosity::N
 	d_porosity = LogNormal(log(mean_crack_porosity), 1) # Normal(mean_crack_porosity, .0002)
 	crack_porosity = min(.1, rand(d_porosity))
 
-	return CrackProfile(cracking_fn[1], rho, K, porosity, crack_porosity, liquid_type, cracking_fn[2])
+	# What alteration percent?
+	d_alteration = LogNormal(log(mean_alteration_percent), 1)
+	alteration = min(.1, rand(d_alteration))
+
+	return CrackProfile(cracking_fn[1], rho, K, porosity, crack_porosity, liquid_type, cracking_fn[2], alteration)
 end
 
 """"
@@ -252,14 +258,32 @@ function apply_cracking(rho::Float64, vp::Float64, vpvs::Float64, profile::Crack
 	vs = vp/vpvs
 	K0, mu0 = moduli_from_speeds(vp, vs, rho)
 
+	### Use VRH bounds to mix in some clay minerals
+	## Kaolinite:
+	# mu = 55000 bar , K = 110000 bar, density = 2600 kg/m^3
+	## Smectite :
+	# mu = 40200 bar , K = 57500 bar, density = 2300 kg/m^3
+	# Source: Vanorio, Prasad, Nur
+	clay_mu = 55000; clay_K = 110000; clay_rho = 2600
+	K0 = (((1-profile.alteration_percent)*K0 + profile.alteration_percent*clay_K)
+		+ 1/((1-profile.alteration_percent)/K0 + profile.alteration_percent/clay_K))/2 # VRH ave
+	mu0 = (((1-profile.alteration_percent)*mu0 + profile.alteration_percent*clay_mu)
+		+ 1/((1-profile.alteration_percent)/mu0 + profile.alteration_percent/clay_mu))/2 # VRH ave
+	rho0 = (1-profile.alteration_percent)*rho + profile.alteration_percent*clay_rho
+
 	### Effect on seismic velocity from pores (speheres and needles)
-	Kw, mud, rho_w_pore = apply_cracking(K0, mu0, rho,
+	Kw, mud, rho_w_pore = apply_cracking(K0, mu0, rho0,
 		profile.cracking_fn, profile.porosity,
 		profile.fluid_density, profile.K_fluid)
 	if (Kw < 0) | (mud < 0) # Too many cracks.
 		return NaN, NaN, NaN
 	end
-	vpw_pore, vsw_pore = speed_from_moduli(Kw, mud, rho_w_pore)
+	
+	try
+		vpw_pore, vsw_pore = speed_from_moduli(Kw, mud, rho_w_pore)
+	catch
+		println("failed to calc speed, alteration percent $(profile.alteration_percent), original stats vp=$vp, vs=$vs, rho=$rho")
+	end
 
 	# # Repeat for cracking (on top of prior props)
 	Kw, mud, rho_w_crack = apply_cracking(Kw, mud, rho_w_pore,

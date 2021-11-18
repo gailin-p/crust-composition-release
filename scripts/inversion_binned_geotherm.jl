@@ -22,6 +22,7 @@ include("../src/linearModel.jl")
 include("../src/rejectionModel.jl")
 include("../src/rejectionModelSingle.jl")
 include("../src/rejectionModelVpVpvs.jl")
+include("../src/rejectionPriorModel.jl")
 include("../src/bin.jl")
 include("../src/rangeModel.jl")
 include("../src/seismic.jl")
@@ -40,12 +41,12 @@ s = ArgParseSettings()
     "--model", "-m"
         help = "Type of model to use. Allowed: inversion (PCA), range (range of nearby samples)"
         arg_type = String
-        range_tester = x -> (x in ["inversion","range", "linear", "vprange", "vprhorange", "rejection", "vsrejection", "vprejection", "vpvsrejection"])
+        range_tester = x -> (x in ["inversion","range", "linear", "vprange", "vprhorange", "rejection", "vsrejection", "vprejection", "vpvsrejection", "priorrejection"])
         default = "rejection"
     "--num_invert", "-n"
     	help = "How many resampled Crust1.0 samples to invert?"
     	arg_type = Int
-    	default = 595
+    	default = 252
     "--num_runs", "-r"
     	help = "How many times to run inversion?"
     	arg_type = Int
@@ -59,7 +60,7 @@ s = ArgParseSettings()
     	help = "Source for seismic data"
         arg_type = String
         range_tester = x -> (x in ["Shen","Crust1.0", "Dabie", "DabieRG", "Test", "Spiral"])
-        default = "Crust1.0"
+        default = "Spiral"
 	"--test_comp"
 		help = "Composition of test earth"
 		nargs = 3
@@ -94,11 +95,19 @@ s = ArgParseSettings()
     	arg_type = Float64
     	default = 1.0
     	range_tester = x -> ((x >= 0) && (x <= 1))
+	"--alteration_fraction"
+		help = "Mean percent alteration"
+		arg_type = Float64
+		default = .01
+		range_tester = x -> ((x >= 0) && (x <= .5))
 end
 parsed_args = parse_args(ARGS, s)
 outputPath = "data/"*parsed_args["data_prefix"]*"/"*parsed_args["name"]*"/"
 if ispath(outputPath)
 	error("Output path $(outputPath) exists, delete or use a different --name option.")
+end
+if parsed_args["test_source"] == "" # default test data source is same as data source.
+	parsed_args["test_source"] = parsed_args["data_prefix"]
 end
 mkpath(outputPath) # make output dir
 writeOptions(outputPath*"/inversion_options.csv", parsed_args)
@@ -120,7 +129,10 @@ function run(parsed_args, outputPath)
 			error("Sum of crack weights does not equal 1. Is your cracked_samples > 1?")
 		end
 
-		profiles = Array{Crack,1}([random_cracking(crack_porosity, pore_porosity, liquid_weights) for i in 1:n])
+		profiles = Array{Crack,1}([
+			random_cracking(crack_porosity, pore_porosity, parsed_args["alteration_fraction"],
+			liquid_weights)
+			for i in 1:n])
 		write_profiles(profiles, crackFile)
 	end
 
@@ -149,6 +161,8 @@ function run(parsed_args, outputPath)
 		models = makeModels(parsed_args["data_prefix"], modelType=VsRejectionModel, crackFile=crackFile)
 	elseif parsed_args["model"] == "vpvsrejection"
 		models = makeModels(parsed_args["data_prefix"], modelType=RejectionModelVpVpvs, crackFile=crackFile)
+	elseif parsed_args["model"] == "priorrejection"
+		models = makeModels(parsed_args["data_prefix"], modelType=RejectionPriorModel, crackFile=crackFile)
 	end
 
 	# Get data to invert (resampled Crust1.0 data)
@@ -160,12 +174,8 @@ function run(parsed_args, outputPath)
 	end
 
 	if parsed_args["data_source"] == "Test"
-		if parsed_args["test_source"] != ""
-			source_models = makeModels(parsed_args["test_source"],
-				modelType=RejectionModel, crackFile=crackFile) # Type of model doesn't matter, just data souce and crack source.
-		else
-			source_models = models
-		end
+		source_models = makeModels(parsed_args["test_source"], # need cracked samples to build fake earths
+				modelType=RejectionModel, crackFile=crackFile)
 		upperDat, (upperCrustbase, upperAge, upperLat, upperLong) =
 			getTestSeismic(parsed_args["num_invert"]*parsed_args["num_runs"], source_models, parsed_args["test_comp"][1], UPPER)
 		middleDat, (middleCrustbase, middleAge, middleLat, middleLong) =
@@ -197,6 +207,10 @@ function run(parsed_args, outputPath)
 
 	## Run number of runs
 	@showprogress "Running samples... " for i in 1:parsed_args["num_runs"]
+		if parsed_args["model"] == "priorrejection"
+			newPrior!(models)
+		end
+
 		istart = (i-1)*parsed_args["num_invert"] + 1
 		iend = i*parsed_args["num_invert"]
 
@@ -251,6 +265,10 @@ function run(parsed_args, outputPath)
 		filename = outputPath*"results-$layer.csv"
 		writedlm(filename, output, ',')
 	end
+
+	modelFile = outputPath*"model_info.csv"
+	modelInfo = modelSummary(models)
+	write(modelFile, modelInfo)
 
 end
 

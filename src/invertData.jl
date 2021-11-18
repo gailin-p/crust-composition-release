@@ -162,7 +162,25 @@ function getTestSeismic(n, models::ModelCollection, target::Float64, layer::Stri
     sio2 = comps[:,2]
 
     # choose comp samples from ign of model 1 that average to target
-    s = sample(indices,nsamples, replace=false)
+	# while ensuring all have non-nan seismic props in all geotherm bins
+	s = fill(0, nsamples); i = 1
+	while i <= nsamples
+		new = sample(indices)
+		# Are seismic props in all geotherm bins non-nan for this sample?
+		seismic_ok = true
+		for m in models.models[layer]
+			if isnan(sum(m.seismic[new,:]))
+			  seismic_ok = false
+			  #println("discard sample $new with props $(m.seismic[new,:])")
+			end
+		end
+		if seismic_ok
+			s[i] = new
+			#println("assignmed $i")
+			i += 1
+		end
+	end
+
     snew = zeros(Int, length(s))
     snew .= s
     best = abs(mean(sio2[s]) - target)
@@ -170,7 +188,17 @@ function getTestSeismic(n, models::ModelCollection, target::Float64, layer::Stri
       to_replace = sample(1:nsamples)
       new = sample(indices)
       snew[to_replace] = new
-      if abs(mean(sio2[snew]) - target) < best
+
+	  # Are seismic props in all geotherm bins non-nan for this sample?
+	  seismic_ok = true
+	  for m in models.models[layer]
+		  if isnan(sum(m.seismic[new,:]))
+			  seismic_ok = false
+		  end
+	  end
+
+	  # Does the error decrease with inclusion of this sample?
+      if (abs(mean(sio2[snew]) - target) < best) & seismic_ok
           s .= snew
           best = abs(mean(sio2[snew]) - target)
           #println("new best $(mean(sio2[snew]))")
@@ -546,16 +574,19 @@ function getSpiralSeismic(layer::Integer, ageModel::AgeModel=Tc1Age(),
 		Weights(crustDistribution.latLongWeight.(crustDistribution.all_lats)), n)
 
 	lats = crustDistribution.all_lats[idx]
-	longs = crustDistribution.all_lats[idx]
+	longs = crustDistribution.all_longs[idx]
 	geotherms = crustDistribution.depth[idx,1]
 
 	# Load files into maps for easy lat/long lookup
 	if layer == 6
 		file = "resources/spiral/SPiRaL_1.4.Interpolated.Surface.12.Crust_12_Bottom_of_upper_crust.txt"
+		lith_file = "resources/litho1.0/lith_layer6.csv"
 	elseif layer == 7
 		file = "resources/spiral/SPiRaL_1.4.Interpolated.Surface.14.Crust_14_Bottom_of_middle_crust.txt"
+		lith_file = "resources/litho1.0/lith_layer7.csv"
 	elseif layer == 8
 		file = "resources/spiral/SPiRaL_1.4.Interpolated.Surface.16.Crust_16_Bottom_of_lower_crust.txt"
+		lith_file = "resources/litho1.0/lith_layer8.csv"
 	else
 		throw("Unrecognized layer option")
 	end
@@ -573,7 +604,12 @@ function getSpiralSeismic(layer::Integer, ageModel::AgeModel=Tc1Age(),
 	crustbase = [lookup[(lats[i], longs[i])][3] for i in 1:length(lats)]
 
 	# rho from crust1
-	_, _, rho = find_crust1_seismic(lats, longs, layer)
+	rho_dat, _ = readdlm(lith_file, ',', header=true)
+	rho_lookup = Dict{Tuple{Float64, Float64},Float64}() # construct lookup dict
+	for i in 1:size(rho_dat,1)
+		rho_lookup[(rho_dat[i,1],rho_dat[i,2])] = rho_dat[i,5]
+	end
+	rho = [rho_lookup[(lats[i], longs[i])] for i in 1:length(lats)]
 
 	ages, age_uncertainty = sampleAge(lats, longs, ageModel)
 

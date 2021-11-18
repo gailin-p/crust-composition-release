@@ -69,6 +69,20 @@ struct ModelCollection
 end
 
 """
+Output any relevant model info. Assume any model within models will return same info.
+"""
+function modelSummary(models::ModelCollection)
+	return modelSummary(models.models[UPPER][1])
+end
+
+"""
+Output relevant model info. Default: empty string
+"""
+function modelSummary(model::AbstractModel)
+	return "This model type did not implement model summary"
+end
+
+"""
 	Explicitly set the error ranges for an InversionModel (not implemented )
 """
 function setError(model::InversionModel, errors::Tuple{Float64,Float64,Float64})
@@ -278,11 +292,18 @@ Load data for an inversion run (function expects ign csv from resampleEarthChem 
 Returns touple of lists of models, (upper, middle, lower), each with as many models as geotherm bins.
 """
 function makeModels(data_location::String; modelType::DataType=RangeModel, crackFile::String="")
+	# Be flexible about where we're running from
+	if isdir("data")
+		folder_prefix = "data"
+	else
+		folder_prefix = "../data"
+	end
+
 	# Elements in ign files: index, elts, geotherm, layers. TODO add header to CSV created by resampleEarthChem
 	elements = PERPLEX_ELEMENTS
 
 	# Build models for every (geotherm bin)/layer combo
-	fileNames = filter(x->contains(x,"perplex_out_"), readdir("data/$data_location"))
+	fileNames = filter(x->contains(x,"perplex_out_"), readdir("$folder_prefix/$data_location"))
 	nBins = length(fileNames)
 	if nBins == 0
 		throw(AssertionError("No perplex results found for data directory $data_location"))
@@ -299,11 +320,11 @@ function makeModels(data_location::String; modelType::DataType=RangeModel, crack
 
 	for bin_num in 1:nBins
 		# Build models for each layer for this bin
-		ignFile = "data/"*data_location*"/bsr_ignmajors_$(bin_num).csv"
+		ignFile = folder_prefix*"/"*data_location*"/bsr_ignmajors_$(bin_num).csv"
 		ign, header = readdlm(ignFile, ',', header=true)
 
 		# Read perplex results. Shape (4, 3, n), property, layer, index.
-		perplexFile = "data/"*data_location*"/perplex_out_$(bin_num).h5"
+		perplexFile = folder_prefix*"/"*data_location*"/perplex_out_$(bin_num).h5"
 		perplexresults = h5read(perplexFile, "results")
 
 		# perplexresults[2,:,:] += (randn(size(perplexresults, 2), size(perplexresults,3)) .* 81.9)
@@ -324,7 +345,17 @@ function makeModels(data_location::String; modelType::DataType=RangeModel, crack
 			apply_cracking!(perplexresults, profiles, true)
 		end
 
-		# Build models.
+		# Some seismic props may be nan, don't use those.
+		okupper = .!isnan.(sum(perplexresults, dims=1)[:,1,:])[:]
+		okmiddle = .!isnan.(sum(perplexresults, dims=1)[:,2,:])[:]
+		oklower = .!isnan.(sum(perplexresults, dims=1)[:,3,:])[:]
+		println("Nan seismic properties found in $(sum(.!okupper)) upper samples, $(sum(.!okmiddle)) middle samples, $(sum(.!oklower)) lower samples.")
+
+		# Build models, filtering nans. This means that model layers won't line up! = probs for building fake earths
+		# upper[bin_num] = modelType(ign[okupper,:], Array(perplexresults[:,1,okupper]'))
+		# middle[bin_num] = modelType(ign[okmiddle,:], Array(perplexresults[:,2,okmiddle]'))
+		# lower[bin_num] = modelType(ign[oklower,:], Array(perplexresults[:,3,oklower]'))
+
 		upper[bin_num] = modelType(ign, Array(perplexresults[:,1,:]'))
 		middle[bin_num] = modelType(ign, Array(perplexresults[:,2,:]'))
 		lower[bin_num] = modelType(ign, Array(perplexresults[:,3,:]'))
