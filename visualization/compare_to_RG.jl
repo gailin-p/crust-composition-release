@@ -78,3 +78,14 @@ scatter!([53.4], [1/100], c=colors[3], label=false, shape=:diamond)
 plot!(yticks=false, framestyle=:box, xlabel="SiO2", size=(600, 200),
     title="$(parsed_args["data_path"])", xlims=(47.5, 67.5))
 savefig("$(parsed_args["data_path"])/output/compare_rg.pdf")
+
+
+# Individual, transparent upper, middle, and lower figs
+stephist(resu[:,1], normalize=:pdf, legend=false, c=:black, ylims=(0,1), background_color=:transparent, nbins=30, size=(600, 200), xlims=(40,85), lineweight=7, xticks=false, yticks=false, xaxis=false, yaxis=false, ymirror=true, fillalpha=.5)
+savefig("$(parsed_args["data_path"])/output/upper_hist.png")
+
+stephist(resu[:,2], normalize=:pdf, legend=false, c=:black,  ylims=(0,1), background_color=:transparent, nbins=30, size=(600, 200), xlims=(40,85), lineweight=7, xticks=false, yticks=false, xaxis=false, yaxis=false, ymirror=true, fillalpha=.5)
+savefig("$(parsed_args["data_path"])/output/middle_hist.png")
+
+stephist(resu[:,3], normalize=:pdf, legend=false, c=:black, ylims=(0,1), background_color=:transparent, nbins=30, size=(600, 200), xlims=(40,85), lineweight=7, xticks=false, yticks=false, xaxis=false, yaxis=false, ymirror=true, fillalpha=.5)
+savefig("$(parsed_args["data_path"])/output/lower_hist.png")

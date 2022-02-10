@@ -4,6 +4,7 @@ For binned models, visualizes 1/nbins samples from each bin.
 
 using ArgParse
 using Plots; gr();
+using Statistics
 
 
 include("../src/config.jl")
@@ -41,7 +42,7 @@ end
 
 models = makeModels(parsed_args["data_prefix"], modelType=RangeModel, crackFile=crackFile)
 
-outputPath = "data/$(parsed_args["data_prefix"])/$(parsed_args["name"])/output/range_model"
+outputPath = "data/$(parsed_args["data_prefix"])/$(parsed_args["name"])/output"
 mkpath(outputPath)
 
 layer_plots = []
@@ -50,6 +51,22 @@ for (l, layer) in enumerate(LAYER_NAMES)
 	#model = models.models[layer][(max(1,floor(Int,models.nbins/2)))] # use an intermediate geotherm
 	cameras = ((30,30), (30,80), (80,10))
 	plots = []
+
+	## bug in gr makes gif(.) function hang in some julia contexts, so doing this in a notebook instead
+	# Make gif of rotating camera
+	# model = models.models[layer][3] # use intermediate geotherm for viz purposes
+	# subsample = sample(1:size(model.seismic,1), 1000) # indices
+	# anim = @animate for i = 10:70
+	# 	println("anim $i")
+	# 	plot(model.seismic[subsample,2], # rho
+	# 		model.seismic[subsample,3], model.seismic[subsample,4], # vp, vp/vs
+	# 		camera=(i,60), marker_z=model.comp[subsample,2], zlims=(1.25,2.0),
+	# 		xlims=(2250,4000), ylims=(4.75,8.25),
+	# 		seriestype=:scatter, markersize=2, markerstrokewidth=0)
+	# end
+	# gif(anim, "$outputPath/$(layer).gif", fps = 10)
+
+	# Make still imgs at various angles
 	for (i, camera) in enumerate(cameras)
 		colorbar=true
 		# if (i == 3) | (l==3) # colorbar on last plot only (for all layers, on bottom layer.)

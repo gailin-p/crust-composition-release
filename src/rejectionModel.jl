@@ -1,15 +1,36 @@
 using Distributions
 using Random
 
+abstract type RejectionModel <: AbstractModel end 
+
 """
 	RejectionModel
 A model which inverts by using rejection sampling to sample from posterior
 distribution P(comp | seismic) for seismic prop at every location
 """
-struct RejectionModel <: AbstractModel
+struct RejectionModel3D <: RejectionModel
 	comp::Array{Float64, 2} # cols according to PERPLEX_ELEMENTS
 	seismic::Array{Float64, 2} # cols index, rho, vp, vpvs
-	er::MvNormal
+	er::MvNormal # error dist, default is zero-mean error dist
+	mean_er::Array{Float64, 1} # original mean of error dist, length 3
+
+end
+
+"""
+	RejectionModelBiased
+subtype of rejectionModel that does not assume zero bias error
+"""
+struct RejectionModelBiased <: RejectionModel
+	comp::Array{Float64, 2} # cols according to PERPLEX_ELEMENTS
+	seismic::Array{Float64, 2} # cols index, rho, vp, vpvs
+	er::MvNormal # error dist, default is zero-mean error dist
+	mean_er::Array{Float64, 1} # original mean of error dist, length 3
+end
+
+function RejectionModelBiased(ign::Array{Float64, 2}, seismic::Array{Float64, 2})
+	m = RejectionModel(ign, seismic)
+	return RejectionModelBiased(m.comp, m.seismic, MvNormal(m.mean_er, m.er.Σ),
+		m.mean_er)
 end
 
 function RejectionModel(ign::Array{Float64, 2}, seismic::Array{Float64, 2})
@@ -31,9 +52,9 @@ function RejectionModel(ign::Array{Float64, 2}, seismic::Array{Float64, 2})
 	N_er = fit(MvNormal, ers')
 
 	# Systematic bias may be caused by cracks, deformation caused by transport to surface -- we don't want it.
-	zero_mean = MvNormal(zeros(3), N_er.Σ) # Divide sigma by 2 for narrower error -- but this does *not* change systematic bias of result. 
+	zero_mean = MvNormal(zeros(3), N_er.Σ) # Divide sigma by 2 for narrower error -- but this does *not* change systematic bias of result.
 
-	return RejectionModel(ign, seismic, zero_mean)
+	return RejectionModel3D(ign, seismic, zero_mean, N_er.μ)
 end
 
 function estimateComposition(model::RejectionModel,

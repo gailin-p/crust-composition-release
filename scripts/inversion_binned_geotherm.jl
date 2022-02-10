@@ -41,7 +41,7 @@ s = ArgParseSettings()
     "--model", "-m"
         help = "Type of model to use. Allowed: inversion (PCA), range (range of nearby samples)"
         arg_type = String
-        range_tester = x -> (x in ["inversion","range", "linear", "vprange", "vprhorange", "rejection", "vsrejection", "vprejection", "vpvsrejection", "priorrejection"])
+        range_tester = x -> (x in ["inversion","range", "linear", "vprange", "vprhorange", "rejection", "vsrejection", "vprejection", "vpvsrejection", "priorrejection", "rejectionbias"])
         default = "rejection"
     "--num_invert", "-n"
     	help = "How many resampled Crust1.0 samples to invert?"
@@ -163,6 +163,8 @@ function run(parsed_args, outputPath)
 		models = makeModels(parsed_args["data_prefix"], modelType=RejectionModelVpVpvs, crackFile=crackFile)
 	elseif parsed_args["model"] == "priorrejection"
 		models = makeModels(parsed_args["data_prefix"], modelType=RejectionPriorModel, crackFile=crackFile)
+	elseif parsed_args["model"] == "rejectionbias"
+		models = makeModels(parsed_args["data_prefix"], modelType=RejectionModelBiased, crackFile=crackFile)
 	end
 
 	# Get data to invert (resampled Crust1.0 data)
