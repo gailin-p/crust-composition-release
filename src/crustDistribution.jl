@@ -145,7 +145,7 @@ function loadCrust1()
     lats = lats[test[:]] # latitudes for values we're keeping
     longs = longs[test[:]]
     ## Filtering by TC1 availibility signifcantly reduces the amount of
-    #  continental shelf included in the lat/long pairs. 
+    #  continental shelf included in the lat/long pairs.
     #heatmap(globe(lats, longs, find_geolcont(lats, longs)))
     #savefig("after_filter.png")
 
@@ -174,52 +174,6 @@ function getCrustParams(n::Int; uncertain::Bool=false)
     bottom = minimum(depth[:,1]) -1
     top = maximum(depth[:,1]) +1
     return getCrustParams(bottom, top, n, uncertain=uncertain)
-end
-
-# """
-#     getFormationConditions(n)
-# Return n depth to 550, depth pairs representing possible formation conditions.
-# Units Bar, C
-# Assume formation at base of crust.
-
-# NOTE: After discussion with brenhin, this is not a good way to estimate formation conditions.
-# Plutons do not form at base of crust; instead they generally form 0-10 km below where they are now.
-# They form at ~600 C but experience some retrograding
-# """
-# function getFormationParams(n::Int)
-#     test = ages .== 25 # youngest crust
-#     samples = Array{Float64, 2}(undef, (n,2))
-#     for i in 1:n
-#         rand_i = sample(Weights(weights[test]))
-#         this_sample = depth[test,:][rand_i,:] # depth to 550, base of upper, middle, lower
-#         samples[i,1] = this_sample[1]
-#         samples[i,2] = this_sample[4]
-#         # # pressue is dpdz * base of lower crust
-#         # samples[i,1] = dpdz * this_sample[4]
-#         # # temperature: assume 0 at surface to 550 at isotherm
-#         # dtdz = (550 / this_sample[1]) # deg c / km
-#         # samples[i,2] = dtdz * this_sample[4]
-#     end
-#     return samples
-# end
-
-"""
-    getFormationConditions()
-Return n depth to 550, depth pairs representing mean formation conditions
-(middle of crust at newly cratonized crust)
-
-NOTE: After discussion with brenhin, this is not a good way to estimate formation conditions.
-Plutons do not form at base of crust; instead they generally form 0-10 km below where they are now.
-They form at ~600 C but experience some retrograding
-"""
-function getFormationParams()
-    #test = ages .== 25 # youngest crust
-    #depths = depth[test,:] ./ 2
-    #w = Weights(weights[test])
-    #return (mean(depths[:,1], w), mean(depths[:,4], w))
-    t = 550 # degrees C
-    d = 30 # km
-    return (d, t/d)
 end
 
 # Return depth and dtdz of formation
