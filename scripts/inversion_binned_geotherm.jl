@@ -59,7 +59,7 @@ s = ArgParseSettings()
     "--data_source"
     	help = "Source for seismic data"
         arg_type = String
-        range_tester = x -> (x in ["Shen","Crust1.0", "Dabie", "DabieRG", "Test", "Spiral"])
+        range_tester = x -> (x in ["Crust1.0", "Dabie", "Test", "Spiral"])
         default = "Spiral"
 	"--test_comp"
 		help = "Composition of test earth"
