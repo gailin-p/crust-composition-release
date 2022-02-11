@@ -1,6 +1,5 @@
 """
-Define inversion model type
-and functions to estimate composition for given seismic properties for a layer
+Define abstract model type and functions to build collections of models across geotherm bins. 
 """
 
 using MultivariateStats

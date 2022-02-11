@@ -1,7 +1,5 @@
 """
-Data from Crust1.0 to invert.
-
-Allows choice of age models.
+Functions to load data from various sources: Crust1.0, Spiral + Litho1.0, or a test earth. 
 
 Requires user to load config.jl and crustDistribution.jl
 """
