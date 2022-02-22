@@ -189,7 +189,7 @@ end
 Currently does not expect/allow worker failure
 """
 function head()
-	println("head")
+	println("head for bin $(parsed_args["geotherm_bin"])")
 	writeOptions("data/"*parsed_args["data_prefix"]*"/runPerplex_options_$(parsed_args["geotherm_bin"]).csv", parsed_args)
 	# Load data used by head
 	fileName = "data/"*parsed_args["data_prefix"]*"/bsr_ignmajors_$(parsed_args["geotherm_bin"]).csv"
