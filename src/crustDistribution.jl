@@ -190,6 +190,26 @@ end
 
 """
     getCrustParams(min, max, n)
+Get deterministic layer depths and geotherms for n samples when geotherms are binned.
+Use center of each geotherm bin, and median layer depth
+"""
+function getCrustParams(bin_min::Number, bin_max::Number)
+    test = (depth[:,1] .<= bin_max) .& (depth[:,1] .> bin_min)
+
+    bin_weight = weights[test]
+
+    upper = median(depth[test,2], Weights(bin_weight))
+    middle = median(depth[test,3], Weights(bin_weight))
+    lower = median(depth[test,4], Weights(bin_weight))
+
+    geotherm = (bin_min + bin_max)/2
+
+    return (geotherm, upper, middle, lower)
+end
+export getCrustParams
+
+"""
+    getCrustParams(min, max, n)
 Get random layer depths and geotherms for n samples when geotherms are binned.
 Use bin min and bin max to limit where geotherms are pulled from.
 Bin prior to adding uncertainty, because that uncertainty in geotherm

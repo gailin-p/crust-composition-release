@@ -61,9 +61,13 @@ s = ArgParseSettings()
         arg_type = Int
         default = 1
     "--exhume"
-        help = "Apply random exhumation in the upper crust?"
-        arg_type = Bool
-        default = false
+        help = "Km of exhumation. Reasonable values 0 - 10 km"
+        arg_type = Float64
+        default = 5.0
+    "--formation_temp"
+        help = "Formation temperature (degrees C). At hottest geotherm, middle of lower crust is ~550 C. Reasonable values range up to 600 C"
+        arg_type = Float64
+        default = 550.0
 end
 parsed_args = parse_args(ARGS, s)
 dir = parsed_args["data_prefix"]
@@ -246,17 +250,14 @@ bin_boundaries = crustDistribution.binBoundaries(bins)
 
 for (i, bin_bottom) in enumerate(bin_boundaries[1:end-1])
     bin_top = bin_boundaries[i+1]
-    println("Resampling bin $i from $bin_bottom to $bin_top...")
-    outtable[:,length(RESAMPLED_ELEMENTS)+2:end-1] =
-        crustDistribution.getCrustParams(bin_bottom, bin_top, size(outtable,1), uncertain=true)
 
-    if parsed_args["exhume"]
-        outtable[:,findfirst(isequal("exhumed"), PERPLEX_ELEMENTS)] =
-            rand(1:.1:10, size(outtable,1)) # km
-    else
-        outtable[:,findfirst(isequal("exhumed"), PERPLEX_ELEMENTS)] =
-            fill(0, size(outtable,1)) # km
+    crustparam = crustDistribution.getCrustParams(bin_bottom, bin_top)
+    for i in 1:size(outtable, 1)
+        outtable[i,length(RESAMPLED_ELEMENTS)+2:end-2] .= crustparam
     end
+
+    outtable[:,findfirst(isequal("exhumed"), PERPLEX_ELEMENTS)] .= parsed_args["exhume"]
+    outtable[:,findfirst(isequal("formation_temp"), PERPLEX_ELEMENTS)] .= parsed_args["formation_temp"]
 
 
 

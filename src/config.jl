@@ -16,7 +16,7 @@ REE = ["La", "Ce", "Pr", "Nd", "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "
 const RESAMPLED_ELEMENTS = vcat(COMPOSITION_ELEMENTS, MINOR_ELTS, REE, ["Latitude", "Longitude", "Age"])
 
 # All elements output by resampleEarthChem and sent to perplex
-const PERPLEX_ELEMENTS = vcat(["index"], RESAMPLED_ELEMENTS, "geotherm", "upper", "middle", "lower","exhumed")
+const PERPLEX_ELEMENTS = vcat(["index"], RESAMPLED_ELEMENTS, "geotherm", "upper", "middle", "lower","exhumed", "formation_temp")
 
 const UPPER="upper"
 const MIDDLE="middle"
