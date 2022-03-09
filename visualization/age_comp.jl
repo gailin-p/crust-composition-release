@@ -88,7 +88,7 @@ p2 = plot(legend=:bottomright, legendfontsize=7, fg_legend = :transparent, ylabe
 p3 = plot(legend=false, xlabel="Age", ylabel="% SiO2", ylims=(52, 70), title="Lower", titlefontsize=11)
 ps = [p1, p2, p3]
 
-p = plot(size=(550,400), legend=:bottomright, fg_legend = :transparent, framestyle=:box, xlabel="Age", ylabel="SiO2 (weight %)");
+p = plot(size=(550,400), legend=:bottomright, fg_legend = :transparent, framestyle=:box, xlabel="Age", ylabel="SiO2 (weight %)", ylims=(50,63));
 
 for i in 1:3 # layers
 	color = [:blue, :orange, :green][i]

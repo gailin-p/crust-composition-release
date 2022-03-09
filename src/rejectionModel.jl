@@ -1,7 +1,7 @@
 using Distributions
 using Random
 
-abstract type RejectionModel <: AbstractModel end 
+abstract type RejectionModel <: AbstractModel end
 
 """
 	RejectionModel
@@ -35,7 +35,11 @@ end
 
 function RejectionModel(ign::Array{Float64, 2}, seismic::Array{Float64, 2})
 	# error distribution
-	dat, header = readdlm("data/adjustedPerplexRes.csv", ',', header=true);
+	if isfile("data/adjustedPerplexRes.csv")
+		dat, header = readdlm("data/adjustedPerplexRes.csv", ',', header=true);
+	else
+		dat, header = readdlm("../data/adjustedPerplexRes.csv", ',', header=true);
+	end
 	header = header[:]
 
 	# No eclogites plz

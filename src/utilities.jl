@@ -75,6 +75,16 @@ function convert_dabie(f::String)
 	return comp_compat, sample_names
 end
 
+# Return list of means where each mean averages over n values of dat
+function runs_means(dat, n)
+	print("Fraction nan: ", sum(isnan.(dat))/length(dat))
+    means = []
+    for i in 1:floor(Int,length(dat)/n)
+        append!(means, nanmean(dat[(i-1)*n+1:i*n]))
+    end
+    return means
+end
+
 """
 Write options to option file
 """

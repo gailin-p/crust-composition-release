@@ -151,56 +151,6 @@ water_rho = 1000 # kg/m^3
 relerr_water_K = .2 # Big uncertainties to allow for dissolved mierals
 relerr_water_rho = .2
 
-"""
-	random_cracking()
-Return a CrackProfile for a random crack/fluid profile or no cracks.
-"""
-function random_cracking(mean_crack_porosity::Number=.007, mean_pore_porosity::Number=.15,
-	mean_alteration_percent::Number=.01,
-	liquid_weights::Array{Float64, 1}=[.2, .2, .2, .4], # dry, water, magma, none
-	shape_weights::Array{Float64, 1}=[.5, .5]) # probability of sphere vs needle
-	# Dry, water or magma?
-	liquid_type = sample(["d","w","m","none"], Weights(liquid_weights))
-
-	# select properties of liquid
-	if liquid_type == "d"
-		K = 0
-		rho = 0
-	elseif liquid_type == "w"
-		d_K = Normal(water_K, water_K*relerr_water_K)
-		d_rho = Normal(water_rho, water_rho*relerr_water_rho)
-		K = max(0, rand(d_K))
-		rho = max(0, rand(d_rho))
-	elseif liquid_type == "m"
-		chosen_K = rand(magma_K)
-		chosen_rho = rand(magma_densities)
-		d_K = Normal(chosen_K, chosen_K*relerr_magma_K)
-		d_rho = Normal(chosen_rho, chosen_rho*relerr_magma_rho)
-		K = max(0, rand(d_K))
-		rho = max(0, rand(d_rho))
-	elseif liquid_type == "none"
-		return NoCrack()
-	end
-
-	# What shape pores? (name and function)
-	cracking_fn = sample([(needle_properties, "needle"), (sphere_properties, "sphere")], Weights(shape_weights))
-
-
-	# What pore space porosity?
-	d_pore = LogNormal(log(mean_pore_porosity), 1)
-	porosity = min(.5, rand(d_pore))
-
-	# What cracking porosity?
-	d_porosity = LogNormal(log(mean_crack_porosity), 1) # Normal(mean_crack_porosity, .0002)
-	crack_porosity = min(.1, rand(d_porosity))
-
-	# What alteration percent?
-	d_alteration = LogNormal(log(mean_alteration_percent), 1)
-	alteration = min(.1, rand(d_alteration))
-
-	return CrackProfile(cracking_fn[1], rho, K, porosity, crack_porosity, liquid_type, cracking_fn[2], alteration)
-end
-
 """"
 Write and read profiles from a csv file --
 allows for saving and later retrieving
@@ -278,11 +228,12 @@ function apply_cracking(rho::Float64, vp::Float64, vpvs::Float64, profile::Crack
 	if (Kw < 0) | (mud < 0) # Too many cracks.
 		return NaN, NaN, NaN
 	end
-	
+
 	try
 		vpw_pore, vsw_pore = speed_from_moduli(Kw, mud, rho_w_pore)
 	catch
 		println("failed to calc speed, alteration percent $(profile.alteration_percent), original stats vp=$vp, vs=$vs, rho=$rho")
+		return rho, vp, vp/vs
 	end
 
 	# # Repeat for cracking (on top of prior props)
@@ -294,24 +245,18 @@ function apply_cracking(rho::Float64, vp::Float64, vpvs::Float64, profile::Crack
 	return rho_w_crack, vpw_crack, vpw_crack/vsw_crack
 end
 
-function apply_cracking!(rho::Array{Float64,1}, vp::Array{Float64,1}, vpvs::Array{Float64,1}, profiles::Array{Crack,1})
-	for i in length(rho)
-		rho[i], vp[i], vpvs[i] = apply_cracking(rho[i], vp[i], vpvs[i], profiles[i])
-	end
-	return rho, vp, vpvs
-end
+# function apply_cracking!(rho::Array{Float64,1}, vp::Array{Float64,1}, vpvs::Array{Float64,1}, profiles::Array{Crack,1})
+# 	for i in length(rho)
+# 		rho[i], vp[i], vpvs[i] = apply_cracking(rho[i], vp[i], vpvs[i], profiles[i])
+# 	end
+# 	return rho, vp, vpvs
+# end
 
 """
 Modify a directory of perplex results by applying cracking to all.
-Use given list of cracking profiles.
+Use a single cracking property.
 """
-function apply_cracking!(perplex_results::Array{Float64,3}, profiles::Array{Crack, 1}, upper::Bool) # output by perplex, dims property (index, rho, vp, vpvs), layer, sample
-	println("Applying cracking to all layers...")
-
-	if length(profiles) != size(perplex_results, 3)
-		error("Must be same number of cracking profiles as samples.")
-	end
-
+function apply_cracking!(perplex_results::Array{Float64,3}, profile::Crack, upper::Bool) # output by perplex, dims property (index, rho, vp, vpvs), layer, sample
 	if upper
 		println("applying cracking to upper crust only ")
 		layers = [1]
@@ -326,10 +271,9 @@ function apply_cracking!(perplex_results::Array{Float64,3}, profiles::Array{Crac
 			if isnan(sum(perplex_results[2:4,layer,i]))
             	continue
         	end
-			perplex_results[2:4,layer,i] = [apply_cracking(perplex_results[2:4,layer,i]..., profiles[i])...]
+			perplex_results[2:4,layer,i] = [apply_cracking(perplex_results[2:4,layer,i]..., profile)...]
 		end
 	end
-	return profiles
 end
 
 ############### CRACKS

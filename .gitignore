@@ -17,3 +17,7 @@ data/
 resources/litho1.0/LITHO1.0/
 resources/shen.US.2016.nc
 resources/bulk_err.mat
+
+scripts/sensitivity.jl
+thesis/
+visualization/.ipynb_checkpoints/

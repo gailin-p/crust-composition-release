@@ -1,5 +1,5 @@
 """
-Define abstract model type and functions to build collections of models across geotherm bins. 
+Define abstract model type and functions to build collections of models across geotherm bins.
 """
 
 using MultivariateStats
@@ -184,7 +184,7 @@ Load data for an inversion run (function expects ign csv from resampleEarthChem 
 
 Returns touple of lists of models, (upper, middle, lower), each with as many models as geotherm bins.
 """
-function makeModels(data_location::String; modelType::DataType=RangeModel, crackFile::String="")
+function makeModels(data_location::String; modelType::DataType=RangeModel, crackProfile::CrackProfile)
 	# Be flexible about where we're running from
 	if isdir("data")
 		folder_prefix = "data"
@@ -220,34 +220,17 @@ function makeModels(data_location::String; modelType::DataType=RangeModel, crack
 		perplexFile = folder_prefix*"/"*data_location*"/perplex_out_$(bin_num).h5"
 		perplexresults = h5read(perplexFile, "results")
 
-		# perplexresults[2,:,:] += (randn(size(perplexresults, 2), size(perplexresults,3)) .* 81.9)
-		# perplexresults[3,:,:] += (randn(size(perplexresults, 2), size(perplexresults,3)) .* .1941)
-		# perplexresults[4,:,:] += (randn(size(perplexresults, 2), size(perplexresults,3)) .* .01933)
-
 		if size(ign,1) != size(perplexresults,3)
 			throw(AssertionError("Size of ign does not match size of perplex results from $(fileName)"))
 		end
 
-		if crackFile != ""
-			if isfile(crackFile)
-				profiles = get_profiles(crackFile)
-				profiles = adjust_profiles(profiles, bin_crack_adjustments[bin_num])
-			else
-				throw(AssertionError("Crack profiles do not exist."))
-			end
-			apply_cracking!(perplexresults, profiles, true)
-		end
+		apply_cracking!(perplexresults, crackProfile, true)
 
 		# Some seismic props may be nan, don't use those.
 		okupper = .!isnan.(sum(perplexresults, dims=1)[:,1,:])[:]
 		okmiddle = .!isnan.(sum(perplexresults, dims=1)[:,2,:])[:]
 		oklower = .!isnan.(sum(perplexresults, dims=1)[:,3,:])[:]
 		println("Nan seismic properties found in $(sum(.!okupper)) upper samples, $(sum(.!okmiddle)) middle samples, $(sum(.!oklower)) lower samples.")
-
-		# Build models, filtering nans. This means that model layers won't line up! = probs for building fake earths
-		# upper[bin_num] = modelType(ign[okupper,:], Array(perplexresults[:,1,okupper]'))
-		# middle[bin_num] = modelType(ign[okmiddle,:], Array(perplexresults[:,2,okmiddle]'))
-		# lower[bin_num] = modelType(ign[oklower,:], Array(perplexresults[:,3,oklower]'))
 
 		upper[bin_num] = modelType(ign, Array(perplexresults[:,1,:]'))
 		middle[bin_num] = modelType(ign, Array(perplexresults[:,2,:]'))

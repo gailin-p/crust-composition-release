@@ -22,7 +22,7 @@ s = ArgParseSettings()
     "--include_prior"
         help = "Include histogram of prior means?"
         arg_type = Bool
-        default= true
+        default= false
 end
 
 parsed_args = parse_args(ARGS, s)
@@ -71,21 +71,21 @@ stephist!(resu[:,3], normalize=:pdf, label="Lower", c=colors[3], nbins=15)
 if parsed_args["include_prior"]
     stephist!(prior_earths, normalize=:pdf, label="Prior", nbins=15)
 end
-scatter!([66.6], [1/100], c=:black, shape=:diamond, label="Rudnick & Gao (2014)", legend=:outerright)
-scatter!([66.6], [1/100], c=colors[1], label=false, shape=:diamond)
-scatter!([63.5], [1/100], c=colors[2], label=false, shape=:diamond)
-scatter!([53.4], [1/100], c=colors[3], label=false, shape=:diamond)
+scatter!([66.6], [5/100], c=:black, shape=:diamond, label="Rudnick & Gao (2014)", legend=:outerright)
+scatter!([66.6], [5/100], c=colors[1], label=false, shape=:diamond)
+scatter!([63.5], [5/100], c=colors[2], label=false, shape=:diamond)
+scatter!([53.4], [5/100], c=colors[3], label=false, shape=:diamond)
 plot!(yticks=false, framestyle=:box, xlabel="SiO2", size=(600, 200),
-    title="$(parsed_args["data_path"])", xlims=(47.5, 67.5))
+    title="$(parsed_args["data_path"])", xlims=(47.5, 67.5), ylims=(0,1.3))
 savefig("$(parsed_args["data_path"])/output/compare_rg.pdf")
 
 
 # Individual, transparent upper, middle, and lower figs
-stephist(resu[:,1], normalize=:pdf, legend=false, c=:black, ylims=(0,1), background_color=:transparent, nbins=30, size=(600, 200), xlims=(40,85), lineweight=7, xticks=false, yticks=false, xaxis=false, yaxis=false, ymirror=true, fillalpha=.5)
+stephist(resu[:,1], normalize=:pdf, legend=false, c=:black, ylims=(0,2), background_color=:transparent, nbins=20, size=(600, 200), xlims=(40,85), lineweight=10, xticks=false, yticks=false, xaxis=false, yaxis=false, ymirror=true, fill=true, alpha=.3, linealpha=1)
 savefig("$(parsed_args["data_path"])/output/upper_hist.png")
 
-stephist(resu[:,2], normalize=:pdf, legend=false, c=:black,  ylims=(0,1), background_color=:transparent, nbins=30, size=(600, 200), xlims=(40,85), lineweight=7, xticks=false, yticks=false, xaxis=false, yaxis=false, ymirror=true, fillalpha=.5)
+stephist(resu[:,2], normalize=:pdf, legend=false, c=:black,  ylims=(0,2), background_color=:transparent, nbins=20, size=(600, 200), xlims=(40,85), lineweight=10, xticks=false, yticks=false, xaxis=false, yaxis=false, ymirror=true, fill=true, alpha=.3, linealpha=1)
 savefig("$(parsed_args["data_path"])/output/middle_hist.png")
 
-stephist(resu[:,3], normalize=:pdf, legend=false, c=:black, ylims=(0,1), background_color=:transparent, nbins=30, size=(600, 200), xlims=(40,85), lineweight=7, xticks=false, yticks=false, xaxis=false, yaxis=false, ymirror=true, fillalpha=.5)
+stephist(resu[:,3], normalize=:pdf, legend=false, c=:black, ylims=(0,2), background_color=:transparent, nbins=20, size=(600, 200), xlims=(40,85), lineweight=10, xticks=false, yticks=false, xaxis=false, yaxis=false, ymirror=true, fill=true, alpha=.3, linealpha=1)
 savefig("$(parsed_args["data_path"])/output/lower_hist.png")

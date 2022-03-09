@@ -16,15 +16,12 @@ using LoggingExtras
 include("../src/config.jl")
 include("../src/inversionModel.jl")
 include("../src/invertData.jl")
-include("../src/vpOnlyModel.jl")
-include("../src/vpRhoModel.jl")
 include("../src/linearModel.jl")
 include("../src/rejectionModel.jl")
 include("../src/rejectionModelSingle.jl")
 include("../src/rejectionModelVpVpvs.jl")
 include("../src/rejectionPriorModel.jl")
 include("../src/bin.jl")
-include("../src/rangeModel.jl")
 include("../src/seismic.jl")
 include("../src/parsePerplex.jl")
 
@@ -74,7 +71,7 @@ s = ArgParseSettings()
     	help = "Uncertainty as a fraction of std of this data set"
         arg_type = Float64
         range_tester = x -> (x >= 0)
-        default = .1
+        default = 0.0
     # "--mean"
     # 	help = "for range model, use the mean of all matching compsoitions? if not, choose best."
     # 	arg_type = Bool
@@ -85,21 +82,20 @@ s = ArgParseSettings()
     	default = 0.007
     	range_tester = x -> ((x >= 0) && (x < .5))
     "--fraction_crack"
-    	help = "% of the pore space that is cracks (very low aspect ratio).
+    	help = "fraction of the pore space that is cracks (very low aspect ratio).
     			Be careful with this, cracks have much larger effect on seismic props."
     	arg_type = Float64
     	default = 0.05
-    	range_tester = x -> ((x >= 0) && (x <= 1))
-    "--cracked_samples"
-    	help = "How many samples do we apply cracking to?"
-    	arg_type = Float64
-    	default = 1.0
     	range_tester = x -> ((x >= 0) && (x <= 1))
 	"--alteration_fraction"
 		help = "Mean percent alteration"
 		arg_type = Float64
 		default = .01
-		range_tester = x -> ((x >= 0) && (x <= .5))
+		range_tester = x -> ((x >= 0) && (x <= .05))
+	"--wet_crack"
+		help = "If true, use wet pore space"
+		arg_type = Bool
+		default = false
 end
 parsed_args = parse_args(ARGS, s)
 outputPath = "data/"*parsed_args["data_prefix"]*"/"*parsed_args["name"]*"/"
@@ -114,58 +110,30 @@ writeOptions(outputPath*"/inversion_options.csv", parsed_args)
 
 function run(parsed_args, outputPath)
 	### SET UP CRACKING ###
-	crackFile = outputPath*"crack_profile.csv"
-	if !isfile(crackFile)
-		println("Building new random cracking profiles...")
-		ignFile = "data/"*parsed_args["data_prefix"]*"/bsr_ignmajors_1.csv"
-		ign, header = readdlm(ignFile, ',', header=true)
-		n = size(ign, 1)
-		liquid_weights = [parsed_args["cracked_samples"]/2, parsed_args["cracked_samples"]/2, # dry, water
-			0, 1- parsed_args["cracked_samples"]] # magma, no cracking
-		crack_porosity = parsed_args["fraction_crack"] * parsed_args["crack"]
-		pore_porosity = (1-parsed_args["fraction_crack"]) * parsed_args["crack"]
+	crack_porosity = parsed_args["fraction_crack"] * parsed_args["crack"]
+	pore_porosity = (1-parsed_args["fraction_crack"]) * parsed_args["crack"]
+	profile = CrackProfile(sphere_properties,
+		(parsed_args["wet_crack"] ? water_rho : 0), #
+		(parsed_args["wet_crack"] ? water_K : 0), # 0 for dry cracks
+		pore_porosity,
+		crack_porosity,
+		(parsed_args["wet_crack"] ? "wet" : "dry"),
+		"sphere",
+		parsed_args["alteration_fraction"] # fraction of clay alteration minerals)
+	)
 
-		if sum(liquid_weights) != 1
-			error("Sum of crack weights does not equal 1. Is your cracked_samples > 1?")
-		end
-
-		profiles = Array{Crack,1}([
-			random_cracking(crack_porosity, pore_porosity, parsed_args["alteration_fraction"],
-			liquid_weights)
-			for i in 1:n])
-		write_profiles(profiles, crackFile)
-	end
-
-	### TODO: combine all these models, this is absurd -- most code is shared.
-	if parsed_args["model"] == "range"
-		models = makeModels(parsed_args["data_prefix"], modelType=RangeModel, crackFile=crackFile) # see inversionModel.jl. returns a ModelCollection
-		# if parsed_args["mean"]
-		# 	setMean(models, parsed_args["mean"])
-		# end
-	elseif parsed_args["model"] == "vprange"
-		models = makeModels(parsed_args["data_prefix"], modelType=VpModel, crackFile=crackFile)
-	elseif parsed_args["model"] == "vprhorange"
-		models = makeModels(parsed_args["data_prefix"], modelType=VpRhoModel, crackFile=crackFile)
-		# if parsed_args["mean"]
-		# 	setMean(models, parsed_args["mean"])
-		# end
-	elseif parsed_args["model"] == "inversion"
-		models = makeModels(parsed_args["data_prefix"], modelType=InversionModel, crackFile=crackFile)
-	elseif parsed_args["model"] == "linear"
-		models = makeModels(parsed_args["data_prefix"], modelType=LinearModel, crackFile=crackFile)
-	elseif parsed_args["model"] == "rejection"
-		models = makeModels(parsed_args["data_prefix"], modelType=RejectionModel, crackFile=crackFile)
-	elseif parsed_args["model"] == "vprejection"
-		models = makeModels(parsed_args["data_prefix"], modelType=VpRejectionModel, crackFile=crackFile)
-	elseif parsed_args["model"] == "vsrejection"
-		models = makeModels(parsed_args["data_prefix"], modelType=VsRejectionModel, crackFile=crackFile)
-	elseif parsed_args["model"] == "vpvsrejection"
-		models = makeModels(parsed_args["data_prefix"], modelType=RejectionModelVpVpvs, crackFile=crackFile)
-	elseif parsed_args["model"] == "priorrejection"
-		models = makeModels(parsed_args["data_prefix"], modelType=RejectionPriorModel, crackFile=crackFile)
-	elseif parsed_args["model"] == "rejectionbias"
-		models = makeModels(parsed_args["data_prefix"], modelType=RejectionModelBiased, crackFile=crackFile)
-	end
+	model_type_from_name = Dict([
+		("linear",LinearModel),
+		("rejection",RejectionModel),
+		("vprejection",VpRejectionModel),
+		("vpvsrejection",RejectionModelVpVpvs),
+		("vsrejection",VsRejectionModel),
+		("priorrejection",RejectionPriorModel),
+		("rejectionbias",RejectionModelBiased)
+	])
+	models = makeModels(parsed_args["data_prefix"],
+		modelType=model_type_from_name[parsed_args["model"]],
+		crackProfile=profile)
 
 	# Get data to invert (resampled Crust1.0 data)
 	# What age model to use?
@@ -177,7 +145,7 @@ function run(parsed_args, outputPath)
 
 	if parsed_args["data_source"] == "Test"
 		source_models = makeModels(parsed_args["test_source"], # need cracked samples to build fake earths
-				modelType=RejectionModel, crackFile=crackFile)
+				modelType=RejectionModel, crackProfile=profile)
 		upperDat, (upperCrustbase, upperAge, upperLat, upperLong) =
 			getTestSeismic(parsed_args["num_invert"]*parsed_args["num_runs"], source_models, parsed_args["test_comp"][1], UPPER)
 		middleDat, (middleCrustbase, middleAge, middleLat, middleLong) =
@@ -247,21 +215,6 @@ function run(parsed_args, outputPath)
 			["sample_age" "sample_depth" "sample_lat" "sample_long"], # supplemental sample data
 			reshape(PERPLEX_ELEMENTS, (1,nelts)), # inverted data (results)
 			["bin"])
-
-		if (parsed_args["crack"] > 0) & (parsed_args["model"] == "range") # only range model preserves 1:1 sample indexing
-			(cracks, crack_header) = readdlm(crackFile, ',', header=true)
-			out_cracks = Array{Any,2}(undef, (size(results[l],1), size(cracks,2)))
-			for j in 1:size(out_cracks,1)
-				idx = results[l][j,1]
-				if isnan(idx)
-					out_cracks[j,:] .= NaN
-				else
-					out_cracks[j,:] = cracks[Int(idx),:]
-				end
-			end
-			output = hcat(output, out_cracks)
-			header = hcat(header, reshape(crack_header, (1, length(crack_header))))
-		end
 
 		output = vcat(header, output)
 		filename = outputPath*"results-$layer.csv"
