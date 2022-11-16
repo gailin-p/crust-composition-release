@@ -1,21 +1,19 @@
 ## Usage
 
-Specify a data folder for the run:
-1. Scripts will look for required data files here
-2. All intermediate data products will go here.
+
 
 ### Steps for basic run:
-src/resampleEarthChem.jl 
+
+See test_end_to_end.sh for an example of a small run. 
+
+src/resampleEarthChem.jl
 src/runPerplex.jl
-src/inversion_binned_geotherm.jl 
+src/inversion_binned_geotherm.jl
 
 ## Organization
 
-src/ holds the scripts for basic data processing.
-Each script outputs an intermediate data file.
-Each script requires a data folder with the output data file from the previous script.
-
+scripts/ holds the scripts for basic data processing.
+src/ holds code for inversion models, seismic models, and data input
+data/ (gitignored) stores data produced by script
+resources/ holds data sources referenced by scripts/ and src/
 visualization/ holds scripts to visualize data
-
-
-
