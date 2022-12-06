@@ -1,7 +1,5 @@
 ## Usage
 
-
-
 ### Steps for basic run:
 
 See test_end_to_end.sh for an example of a small run. 
